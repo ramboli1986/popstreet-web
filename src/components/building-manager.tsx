@@ -39,6 +39,8 @@ type BuildingMetric = {
   minNetPrice: number | null;
   latestListingAt: string | null;
 };
+type UnitStatusFilter = "all" | ListingStatus;
+type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 
 const listingStatuses: ListingStatus[] = ["available", "pending", "unavailable", "rented", "archived"];
 
@@ -55,6 +57,10 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [areaFilter, setAreaFilter] = useState("all");
+  const [unitSearch, setUnitSearch] = useState("");
+  const [unitBuildingFilter, setUnitBuildingFilter] = useState("all");
+  const [unitStatusFilter, setUnitStatusFilter] = useState<UnitStatusFilter>("all");
+  const [unitBedroomFilter, setUnitBedroomFilter] = useState<UnitBedroomFilter>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -104,17 +110,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setDraft(nextSelected ? { ...nextSelected } : null);
   }, [selectedBuilding]);
 
-  const loadUnits = useCallback(async (building: Building | null) => {
-    if (!building || building.id.startsWith("new-")) {
-      setUnits([]);
-      return;
-    }
-
-    const { data: unitRows, error: unitError } = await supabase
-      .from("units")
-      .select("*")
-      .eq("building_id", building.id)
-      .order("unit_number");
+  const loadUnits = useCallback(async () => {
+    const { data: unitRows, error: unitError } = await supabase.from("units").select("*").order("unit_number").limit(5000);
 
     if (unitError) {
       setError(unitError.message);
@@ -155,8 +152,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   }, []);
 
   useEffect(() => {
-    loadUnits(selectedBuilding);
-  }, [loadUnits, selectedBuilding]);
+    loadUnits();
+  }, [loadUnits]);
 
   const buildingMetrics = useMemo(() => {
     const latestListingByUnit = new Map<string, UnitListing>();
@@ -199,6 +196,16 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     return nextMetrics;
   }, [listingIndex, unitIndex]);
 
+  const buildingByID = useMemo(() => {
+    const nextBuildingsByID = new Map<string, Building>();
+
+    buildings.forEach((building) => {
+      nextBuildingsByID.set(building.id, building);
+    });
+
+    return nextBuildingsByID;
+  }, [buildings]);
+
   const areaOptions = useMemo(() => {
     const labels = new Set<string>();
 
@@ -234,6 +241,56 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     () =>
       filteredBuildings.reduce((total, building) => total + (buildingMetrics.get(building.id)?.availableCount ?? 0), 0),
     [buildingMetrics, filteredBuildings]
+  );
+
+  const filteredUnits = useMemo(() => {
+    const query = unitSearch.trim().toLowerCase();
+
+    return units.filter((unit) => {
+      const building = buildingByID.get(unit.building_id);
+      const listing = unit.listing ?? defaultListing(unit.id);
+      const matchesBuilding = unitBuildingFilter === "all" || unit.building_id === unitBuildingFilter;
+      const matchesStatus = unitStatusFilter === "all" || listing.status === unitStatusFilter;
+      const matchesBedroom =
+        unitBedroomFilter === "all" ||
+        (unitBedroomFilter === "3plus" ? unit.bedroom_count >= 3 : unit.bedroom_count === Number(unitBedroomFilter));
+      const matchesSearch =
+        query.length === 0 ||
+        [
+          unit.unit_number,
+          unit.name,
+          unit.description,
+          building?.name,
+          building?.address,
+          building?.full_address,
+          building?.area,
+          building?.city,
+          building?.state,
+          listing.lease_deal
+        ]
+          .filter(Boolean)
+          .some((value) => value!.toLowerCase().includes(query));
+
+      return matchesBuilding && matchesStatus && matchesBedroom && matchesSearch;
+    });
+  }, [buildingByID, unitBedroomFilter, unitBuildingFilter, units, unitSearch, unitStatusFilter]);
+
+  const filteredUnitStats = useMemo(
+    () => ({
+      total: filteredUnits.length,
+      available: filteredUnits.filter((unit) => (unit.listing ?? defaultListing(unit.id)).status === "available").length
+    }),
+    [filteredUnits]
+  );
+
+  const selectedUnitFilterBuilding = useMemo(
+    () => (unitBuildingFilter === "all" ? null : buildings.find((building) => building.id === unitBuildingFilter) ?? null),
+    [buildings, unitBuildingFilter]
+  );
+
+  const unitDialogBuilding = useMemo(
+    () => (unitDialogDraft ? buildingByID.get(unitDialogDraft.building_id) ?? selectedBuilding : null),
+    [buildingByID, selectedBuilding, unitDialogDraft]
   );
 
   function selectBuilding(building: Building) {
@@ -296,7 +353,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
     setSelectedBuilding(nextDraft);
     setDraft(nextDraft);
-    setUnits([]);
     setIsBuildingEditorOpen(true);
   }
 
@@ -393,7 +449,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
   async function refreshAll() {
     await loadBuildings();
-    await loadUnits(selectedBuilding);
+    await loadUnits();
   }
 
   function openAddUnitDialog(building: Building | null = selectedBuilding) {
@@ -415,6 +471,16 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setUnitDialogDraft(unit);
   }
 
+  function openAddUnitFromUnitsPage() {
+    const building =
+      selectedUnitFilterBuilding ??
+      (selectedBuilding && !selectedBuilding.id.startsWith("new-") ? selectedBuilding : null) ??
+      buildings[0] ??
+      null;
+
+    openAddUnitDialog(building);
+  }
+
   const pageCopy = {
     building: {
       eyebrow: "Building",
@@ -423,8 +489,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     },
     units: {
       eyebrow: "Units",
-      title: "Unit lists",
-      subtitle: "Select a building, then open a unit card to edit pricing, deals, and listing status."
+      title: "All unit lists",
+      subtitle: "Filter every unit by building, status, layout, price context, and listing readiness."
     },
     map: {
       eyebrow: "Map editor",
@@ -446,7 +512,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             <RefreshCcw size={16} />
             Refresh
           </button>
-          {canEdit ? (
+          {canEdit && mode !== "units" ? (
             <button className="button" onClick={createBuildingDraft} type="button">
               <Plus size={16} />
               New building
@@ -459,123 +525,168 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       {message ? <div className="message compact-message">{message}</div> : null}
       {!canEdit ? <div className="message compact-message">Viewer role is read-only.</div> : null}
 
-      <section className="ops-toolbar">
-        <label className="search-box">
-          <Search size={16} />
-          <input
-            placeholder="Search name, address, area..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
-        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-          <option value="all">All status</option>
-          <option value="active">Active only</option>
-          <option value="archived">Archived only</option>
-        </select>
-        <select value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
-          <option value="all">All locations</option>
-          {areaOptions.map((area) => (
-            <option key={area} value={area}>
-              {area}
-            </option>
-          ))}
-        </select>
-        <div className="toolbar-stat">
-          <strong>{filteredBuildings.length}</strong>
-          <span>buildings</span>
-        </div>
-        <div className="toolbar-stat">
-          <strong>{filteredAvailableUnitCount}</strong>
-          <span>available units</span>
-        </div>
-      </section>
-
-      <div className={`inventory-stack ${mode === "building" ? "building-only" : ""}`}>
-        <section className="data-panel building-list-panel">
-          <div className="panel-heading">
-            <div>
-              <div className="eyebrow">Building list</div>
-              <h3>{mode === "units" ? "Choose a building" : "Fast query and edit"}</h3>
-            </div>
-            <span className="count-pill">{buildings.length} total</span>
+      {mode === "units" ? (
+        <section className="ops-toolbar unit-ops-toolbar">
+          <label className="search-box">
+            <Search size={16} />
+            <input
+              placeholder="Search unit, building, address..."
+              value={unitSearch}
+              onChange={(event) => setUnitSearch(event.target.value)}
+            />
+          </label>
+          <select value={unitBuildingFilter} onChange={(event) => setUnitBuildingFilter(event.target.value)}>
+            <option value="all">All buildings</option>
+            {buildings.map((building) => (
+              <option key={building.id} value={building.id}>
+                {building.name}
+              </option>
+            ))}
+          </select>
+          <select value={unitStatusFilter} onChange={(event) => setUnitStatusFilter(event.target.value as UnitStatusFilter)}>
+            <option value="all">All status</option>
+            {listingStatuses.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+          <select value={unitBedroomFilter} onChange={(event) => setUnitBedroomFilter(event.target.value as UnitBedroomFilter)}>
+            <option value="all">All layouts</option>
+            <option value="0">Studio</option>
+            <option value="1">1 bed</option>
+            <option value="2">2 bed</option>
+            <option value="3plus">3+ bed</option>
+          </select>
+          <div className="toolbar-stat">
+            <strong>{filteredUnitStats.total}</strong>
+            <span>units</span>
           </div>
-          <BuildingTable
-            buildings={filteredBuildings}
-            canEdit={canEdit}
-            metrics={buildingMetrics}
-            selectedBuilding={selectedBuilding}
-            onArchive={(building) => setBuildingActive(building, false)}
-            onDelete={deleteBuilding}
-            onEdit={openBuildingEditor}
-            onAddUnit={openAddUnitDialog}
-            onRestore={(building) => setBuildingActive(building, true)}
-            onSelect={selectBuilding}
-          />
+          <div className="toolbar-stat">
+            <strong>{filteredUnitStats.available}</strong>
+            <span>available</span>
+          </div>
+          {canEdit ? (
+            <button className="button" disabled={buildings.length === 0} onClick={openAddUnitFromUnitsPage} type="button">
+              <Plus size={16} />
+              Add unit
+            </button>
+          ) : null}
         </section>
+      ) : (
+        <section className="ops-toolbar">
+          <label className="search-box">
+            <Search size={16} />
+            <input
+              placeholder="Search name, address, area..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </label>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
+            <option value="all">All status</option>
+            <option value="active">Active only</option>
+            <option value="archived">Archived only</option>
+          </select>
+          <select value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
+            <option value="all">All locations</option>
+            {areaOptions.map((area) => (
+              <option key={area} value={area}>
+                {area}
+              </option>
+            ))}
+          </select>
+          <div className="toolbar-stat">
+            <strong>{filteredBuildings.length}</strong>
+            <span>buildings</span>
+          </div>
+          <div className="toolbar-stat">
+            <strong>{filteredAvailableUnitCount}</strong>
+            <span>available units</span>
+          </div>
+        </section>
+      )}
 
-        {mode === "units" && selectedBuilding && !selectedBuilding.id.startsWith("new-") ? (
-          <UnitManager
-            building={selectedBuilding}
-            canEdit={canEdit}
-            onAddUnit={() => openAddUnitDialog(selectedBuilding)}
-            onEditUnit={openEditUnitDialog}
-            units={units}
-          />
-        ) : null}
-
-        {mode === "units" && (!selectedBuilding || selectedBuilding.id.startsWith("new-")) ? (
-          <section className="data-panel units-list-panel">
-            <EmptyState title="Select a building" body="Choose a building above to view or add units." />
-          </section>
-        ) : null}
-
-        {mode === "map" ? (
-          <section className="data-panel map-editor-panel">
+      {mode === "units" ? (
+        <UnitManager
+          buildingsByID={buildingByID}
+          canEdit={canEdit}
+          filteredCount={filteredUnits.length}
+          onEditUnit={openEditUnitDialog}
+          totalCount={units.length}
+          units={filteredUnits}
+        />
+      ) : (
+        <div className={`inventory-stack ${mode === "building" ? "building-only" : ""}`}>
+          <section className="data-panel building-list-panel">
             <div className="panel-heading">
               <div>
-                <div className="eyebrow">Map view</div>
-                <h3>{selectedBuilding ? selectedBuilding.name : "Select a building"}</h3>
+                <div className="eyebrow">Building list</div>
+                <h3>Fast query and edit</h3>
               </div>
-              {draft ? (
-                <button className="button compact-button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
-                  <Save size={14} />
-                  Save location
-                </button>
-              ) : null}
+              <span className="count-pill">{buildings.length} total</span>
             </div>
-            <BuildingMap
+            <BuildingTable
               buildings={filteredBuildings}
               canEdit={canEdit}
-              onCoordinateChange={updateDraftCoordinate}
-              onSelect={selectBuilding}
+              metrics={buildingMetrics}
               selectedBuilding={selectedBuilding}
+              onArchive={(building) => setBuildingActive(building, false)}
+              onDelete={deleteBuilding}
+              onEdit={openBuildingEditor}
+              onAddUnit={openAddUnitDialog}
+              onRestore={(building) => setBuildingActive(building, true)}
+              onSelect={selectBuilding}
             />
-            {draft ? (
-              <div className="geo-row map-coordinate-row">
-                <NumberField
-                  disabled={!canEdit}
-                  label="Latitude"
-                  step="0.000001"
-                  value={draft.latitude}
-                  onChange={(value) => updateDraft("latitude", value ?? draft.latitude)}
-                />
-                <NumberField
-                  disabled={!canEdit}
-                  label="Longitude"
-                  step="0.000001"
-                  value={draft.longitude}
-                  onChange={(value) => updateDraft("longitude", value ?? draft.longitude)}
-                />
-                <button className="button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
-                  <Save size={16} />
-                  Save
-                </button>
-              </div>
-            ) : null}
           </section>
-        ) : null}
-      </div>
+
+          {mode === "map" ? (
+            <section className="data-panel map-editor-panel">
+              <div className="panel-heading">
+                <div>
+                  <div className="eyebrow">Map view</div>
+                  <h3>{selectedBuilding ? selectedBuilding.name : "Select a building"}</h3>
+                </div>
+                {draft ? (
+                  <button className="button compact-button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
+                    <Save size={14} />
+                    Save location
+                  </button>
+                ) : null}
+              </div>
+              <BuildingMap
+                buildings={filteredBuildings}
+                canEdit={canEdit}
+                onCoordinateChange={updateDraftCoordinate}
+                onSelect={selectBuilding}
+                selectedBuilding={selectedBuilding}
+              />
+              {draft ? (
+                <div className="geo-row map-coordinate-row">
+                  <NumberField
+                    disabled={!canEdit}
+                    label="Latitude"
+                    step="0.000001"
+                    value={draft.latitude}
+                    onChange={(value) => updateDraft("latitude", value ?? draft.latitude)}
+                  />
+                  <NumberField
+                    disabled={!canEdit}
+                    label="Longitude"
+                    step="0.000001"
+                    value={draft.longitude}
+                    onChange={(value) => updateDraft("longitude", value ?? draft.longitude)}
+                  />
+                  <button className="button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
+                    <Save size={16} />
+                    Save
+                  </button>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+        </div>
+      )}
 
       {isBuildingEditorOpen && draft ? (
         <BuildingEditorDialog
@@ -591,13 +702,13 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         />
       ) : null}
 
-      {unitDialogDraft && selectedBuilding ? (
+      {unitDialogDraft && unitDialogBuilding ? (
         <UnitEditorDialog
-          building={selectedBuilding}
+          building={unitDialogBuilding}
           canEdit={canEdit}
           onClose={() => setUnitDialogDraft(null)}
           onSaved={async () => {
-            await loadUnits(selectedBuilding);
+            await loadUnits();
             await loadBuildings();
           }}
           unit={unitDialogDraft}
@@ -639,6 +750,7 @@ function BuildingTable({
       <table className="admin-table">
         <thead>
           <tr>
+            <th>No.</th>
             <th>Building</th>
             <th>Location</th>
             <th>Available</th>
@@ -649,12 +761,13 @@ function BuildingTable({
           </tr>
         </thead>
         <tbody>
-          {buildings.map((building) => {
+          {buildings.map((building, index) => {
             const metric = metrics.get(building.id);
             const isSelected = selectedBuilding?.id === building.id;
 
             return (
               <tr className={isSelected ? "selected" : ""} key={building.id}>
+                <td className="row-index">{index + 1}</td>
                 <td>
                   <button className="table-primary-link" onClick={() => onSelect(building)} type="button">
                     {building.name}
@@ -938,38 +1051,40 @@ function BuildingEditorDialog({
 }
 
 function UnitManager({
-  building,
+  buildingsByID,
   units,
   canEdit,
-  onAddUnit,
-  onEditUnit
+  filteredCount,
+  onEditUnit,
+  totalCount
 }: {
-  building: Building;
+  buildingsByID: Map<string, Building>;
   units: UnitWithListing[];
   canEdit: boolean;
-  onAddUnit: () => void;
+  filteredCount: number;
   onEditUnit: (unit: UnitWithListing) => void;
+  totalCount: number;
 }) {
   return (
-    <section className="data-panel units-list-panel">
+    <section className="data-panel units-list-panel global-units-panel">
       <div className="panel-heading compact">
         <div>
-          <div className="eyebrow">Available unit lists</div>
-          <h3>{building.name}</h3>
+          <div className="eyebrow">Unit list</div>
+          <h3>All units</h3>
         </div>
-        <button className="button compact-button" disabled={!canEdit} onClick={onAddUnit} type="button">
-          <Plus size={15} />
-          Add unit
-        </button>
+        <span className="count-pill">
+          {filteredCount} / {totalCount} shown
+        </span>
       </div>
 
       {units.length === 0 ? (
-        <EmptyState title="No units yet" body="Add a unit, then publish its listing when pricing is ready." />
+        <EmptyState title="No units found" body="Try clearing the unit filters or search terms." />
       ) : (
         <div className="unit-table-wrap">
-          <div className="unit-table">
+          <div className="unit-table global-unit-table">
             <div className="unit-table-head">
               <span>Unit</span>
+              <span>Building</span>
               <span>Layout</span>
               <span>Price</span>
               <span>Deal</span>
@@ -977,7 +1092,13 @@ function UnitManager({
               <span>Actions</span>
             </div>
             {units.map((unit) => (
-              <UnitListingRow canEdit={canEdit} key={unit.id} onEditUnit={onEditUnit} unit={unit} />
+              <UnitListingRow
+                building={buildingsByID.get(unit.building_id) ?? null}
+                canEdit={canEdit}
+                key={unit.id}
+                onEditUnit={onEditUnit}
+                unit={unit}
+              />
             ))}
           </div>
         </div>
@@ -987,10 +1108,12 @@ function UnitManager({
 }
 
 function UnitListingRow({
+  building,
   unit,
   canEdit,
   onEditUnit
 }: {
+  building: Building | null;
   unit: UnitWithListing;
   canEdit: boolean;
   onEditUnit: (unit: UnitWithListing) => void;
@@ -1004,6 +1127,10 @@ function UnitListingRow({
           {unit.unit_number || "No unit #"}
         </button>
         <div className="table-subtext">{unit.name || "Untitled unit"}</div>
+      </div>
+      <div className="unit-cell unit-summary-cell">
+        <strong>{building?.name ?? "Unknown building"}</strong>
+        <span>{building ? `${building.area || building.city}, ${building.state}` : "Building missing"}</span>
       </div>
       <div className="unit-cell unit-summary-cell">
         <strong>

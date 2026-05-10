@@ -231,7 +231,8 @@ h3 {
 }
 
 .content:has(.operations-grid),
-.content:has(.inventory-stack) {
+.content:has(.inventory-stack),
+.content:has(.global-units-panel) {
   display: flex;
   height: calc(100vh - 58px);
   min-height: 0;
@@ -440,6 +441,10 @@ h3 {
   margin-bottom: 12px;
 }
 
+.unit-ops-toolbar {
+  grid-template-columns: minmax(260px, 1fr) minmax(220px, 0.9fr) 150px 140px auto auto auto;
+}
+
 .search-box {
   display: flex;
   align-items: center;
@@ -595,6 +600,13 @@ h3 {
   border-bottom: 1px solid var(--line-soft);
   padding: 11px 12px;
   vertical-align: middle;
+}
+
+.row-index {
+  width: 54px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .admin-table tbody tr:hover {
@@ -812,6 +824,11 @@ h3 {
   max-height: 100%;
 }
 
+.global-units-panel {
+  flex: 1;
+  min-height: 0;
+}
+
 .unit-table {
   min-width: 1080px;
   border: 1px solid var(--line);
@@ -824,6 +841,15 @@ h3 {
   display: grid;
   grid-template-columns: 1.05fr 1.15fr 1.35fr 1.15fr 0.8fr 1.15fr;
   gap: 0;
+}
+
+.global-unit-table {
+  min-width: 1280px;
+}
+
+.global-unit-table .unit-table-head,
+.global-unit-table .unit-table-row {
+  grid-template-columns: 0.9fr 1.35fr 1fr 1.2fr 1.05fr 0.72fr 0.95fr;
 }
 
 .unit-table-head {
@@ -1048,7 +1074,8 @@ h3 {
     padding: 12px;
   }
 
-  .content:has(.inventory-stack) {
+  .content:has(.inventory-stack),
+  .content:has(.global-units-panel) {
     height: auto;
     overflow: visible;
   }

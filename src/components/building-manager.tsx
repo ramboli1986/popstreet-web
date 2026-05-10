@@ -473,6 +473,10 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             selectedBuilding={selectedBuilding}
             onArchive={(building) => setBuildingActive(building, false)}
             onDelete={deleteBuilding}
+            onManageUnits={(building) => {
+              selectBuilding(building);
+              setActiveTab("units");
+            }}
             onRestore={(building) => setBuildingActive(building, true)}
             onSelect={selectBuilding}
             onShowMap={(building) => {
@@ -494,9 +498,22 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               </p>
             </div>
             {draft ? (
-              <span className={`status-pill ${draft.is_active ? "active" : "suspended"}`}>
-                {draft.is_active ? "Active" : "Archived"}
-              </span>
+              <div className="inspector-quick-actions">
+                <span className={`status-pill ${draft.is_active ? "active" : "suspended"}`}>
+                  {draft.is_active ? "Active" : "Archived"}
+                </span>
+                {!draft.id.startsWith("new-") ? (
+                  <button
+                    className="button compact-button"
+                    disabled={!canEdit}
+                    onClick={() => setActiveTab("units")}
+                    type="button"
+                  >
+                    <Plus size={14} />
+                    Add unit
+                  </button>
+                ) : null}
+              </div>
             ) : null}
           </div>
 
@@ -601,6 +618,7 @@ function BuildingTable({
   selectedBuilding,
   onArchive,
   onDelete,
+  onManageUnits,
   onRestore,
   onSelect,
   onShowMap
@@ -611,6 +629,7 @@ function BuildingTable({
   selectedBuilding: Building | null;
   onArchive: (building: Building) => void;
   onDelete: (building: Building) => void;
+  onManageUnits: (building: Building) => void;
   onRestore: (building: Building) => void;
   onSelect: (building: Building) => void;
   onShowMap: (building: Building) => void;
@@ -665,6 +684,10 @@ function BuildingTable({
                 </td>
                 <td>
                   <div className="row-actions">
+                    <button className="mini-action" onClick={() => onManageUnits(building)} type="button">
+                      <Plus size={14} />
+                      Units
+                    </button>
                     <button className="icon-button" onClick={() => onShowMap(building)} title="Show on map" type="button">
                       <MapPinned size={15} />
                     </button>

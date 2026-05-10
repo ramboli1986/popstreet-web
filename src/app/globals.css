@@ -230,6 +230,14 @@ h3 {
   padding: 18px;
 }
 
+.content:has(.operations-grid) {
+  display: flex;
+  height: calc(100vh - 58px);
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .content-header {
   display: flex;
   align-items: flex-start;
@@ -513,8 +521,11 @@ h3 {
 .operations-grid {
   display: grid;
   grid-template-columns: minmax(520px, 1.1fr) minmax(470px, 0.95fr);
+  flex: 1;
   gap: 12px;
   align-items: start;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .operations-grid.map-mode {
@@ -524,13 +535,25 @@ h3 {
 .data-panel,
 .inspector-panel {
   min-width: 0;
+  height: 100%;
   overflow: hidden;
+}
+
+.data-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
 }
 
 .admin-table-wrap,
 .unit-table-wrap {
   width: 100%;
   overflow: auto;
+}
+
+.admin-table-wrap {
+  flex: 1;
+  min-height: 0;
 }
 
 .admin-table {
@@ -570,11 +593,30 @@ h3 {
 
 .row-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
+.mini-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 30px;
+  border: 1px solid rgb(64 158 255 / 28%);
+  border-radius: 6px;
+  background: #eef6ff;
+  color: var(--brand-strong);
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
 .inspector-panel {
-  display: grid;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
   gap: 0;
 }
 
@@ -583,14 +625,24 @@ h3 {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--line);
   background: #fbfcfe;
   padding: 14px;
 }
 
+.inspector-quick-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .inspector-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--line);
 }
 
@@ -616,6 +668,21 @@ h3 {
 .units-panel,
 .map-editor-panel {
   padding: 14px;
+}
+
+.editor-form,
+.units-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.map-editor-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .form-section-title {
@@ -668,13 +735,14 @@ h3 {
 
 .map-canvas {
   width: 100%;
-  height: 420px;
+  flex: 1;
+  min-height: 340px;
   border-top: 1px solid var(--line-soft);
   border-bottom: 1px solid var(--line-soft);
 }
 
 .map-mode .map-canvas {
-  height: 560px;
+  min-height: 460px;
 }
 
 .building-marker,
@@ -712,9 +780,14 @@ h3 {
 .geo-row {
   display: grid;
   grid-template-columns: 1fr 1fr auto;
+  flex: 0 0 auto;
   gap: 10px;
   align-items: end;
   padding-top: 12px;
+}
+
+.unit-table-wrap {
+  max-height: 100%;
 }
 
 .unit-table {

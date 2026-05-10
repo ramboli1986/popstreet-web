@@ -119,9 +119,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     }
 
     const baseUnits = (unitRows ?? []) as UnitWithListing[];
-    const unitIDs = baseUnits.map((unit) => unit.id);
 
-    if (unitIDs.length === 0) {
+    if (baseUnits.length === 0) {
       setUnits([]);
       return;
     }
@@ -129,21 +128,25 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     const { data: listingRows, error: listingError } = await supabase
       .from("unit_listings")
       .select("*")
-      .in("unit_id", unitIDs)
-      .order("updated_at", { ascending: false });
+      .order("updated_at", { ascending: false })
+      .limit(10000);
 
     if (listingError) {
       setError(listingError.message);
+      setUnits(baseUnits.map((unit) => ({ ...unit, listing: null })));
       return;
     }
 
     const listingsByUnit = new Map<string, UnitListing>();
-    ((listingRows ?? []) as UnitListing[]).forEach((listing) => {
+    const nextListings = (listingRows ?? []) as UnitListing[];
+
+    nextListings.forEach((listing) => {
       if (!listingsByUnit.has(listing.unit_id)) {
         listingsByUnit.set(listing.unit_id, listing);
       }
     });
 
+    setListingIndex(nextListings);
     setUnits(baseUnits.map((unit) => ({ ...unit, listing: listingsByUnit.get(unit.id) ?? null })));
   }, []);
 
@@ -702,7 +705,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         />
       ) : null}
 
-      {unitDialogDraft && unitDialogBuilding ? (
+      {unitDialogDraft ? (
         <UnitEditorDialog
           building={unitDialogBuilding}
           canEdit={canEdit}
@@ -1169,7 +1172,7 @@ function UnitEditorDialog({
   onClose,
   onSaved
 }: {
-  building: Building;
+  building: Building | null;
   unit: UnitWithListing;
   canEdit: boolean;
   onClose: () => void;
@@ -1204,8 +1207,16 @@ function UnitEditorDialog({
     setError(null);
 
     const isNew = nextDraft.id.startsWith("new-");
+    const buildingID = building?.id ?? nextDraft.building_id;
+
+    if (isNew && !building) {
+      setError("Choose a building before creating a unit.");
+      setIsSaving(false);
+      return;
+    }
+
     const unitPayload = {
-      building_id: building.id,
+      building_id: buildingID,
       unit_number: nextDraft.unit_number,
       name: nextDraft.name || `Unit ${nextDraft.unit_number}`,
       description: nextDraft.description,
@@ -1345,7 +1356,7 @@ function UnitEditorDialog({
       <aside className="side-drawer unit-drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <header className="drawer-header">
           <div>
-            <div className="eyebrow">{building.name}</div>
+            <div className="eyebrow">{building?.name ?? "Unknown building"}</div>
             <h3>{draft.id.startsWith("new-") ? "Add unit" : `Unit ${draft.unit_number}`}</h3>
           </div>
           <button className="icon-button" onClick={onClose} title="Close" type="button">

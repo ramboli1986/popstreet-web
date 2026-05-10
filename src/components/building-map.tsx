@@ -45,8 +45,8 @@ export function BuildingMap({
         scrollWheelZoom: true
       }).setView([40.742, -74.0], 12);
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "&copy; OpenStreetMap contributors",
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
         maxZoom: 19
       }).addTo(map);
 
@@ -82,11 +82,12 @@ export function BuildingMap({
 
     validBuildings.forEach((building) => {
       const isSelected = selectedBuilding?.id === building.id;
+      const markerColor = areaMarkerColor(building.area || building.neighborhoods?.name || building.city || "Other");
       const marker = L.marker([building.latitude, building.longitude], {
         draggable: canEdit && isSelected,
         icon: L.divIcon({
           className: "",
-          html: `<div class="${isSelected ? "building-marker-selected" : "building-marker"}">${escapeHtml(
+          html: `<div class="${isSelected ? "building-marker building-marker-selected" : "building-marker"}" style="--marker-color: ${markerColor};">${escapeHtml(
             building.name
           )}</div>`,
           iconAnchor: [20, 18]
@@ -129,4 +130,26 @@ function escapeHtml(value: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+function areaMarkerColor(area: string) {
+  const palette = [
+    "#4285f4",
+    "#34a853",
+    "#fbbc04",
+    "#ea4335",
+    "#7e57c2",
+    "#00acc1",
+    "#f57c00",
+    "#5c6bc0",
+    "#43a047",
+    "#d81b60"
+  ];
+  let hash = 0;
+
+  for (let index = 0; index < area.length; index += 1) {
+    hash = (hash * 31 + area.charCodeAt(index)) % palette.length;
+  }
+
+  return palette[Math.abs(hash) % palette.length];
 }

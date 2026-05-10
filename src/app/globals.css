@@ -232,7 +232,8 @@ h3 {
 
 .content:has(.operations-grid),
 .content:has(.inventory-stack),
-.content:has(.global-units-panel) {
+.content:has(.global-units-panel),
+.content:has(.map-workspace-panel) {
   display: flex;
   height: calc(100vh - 58px);
   min-height: 0;
@@ -711,6 +712,23 @@ h3 {
   overflow: hidden;
 }
 
+.map-workspace-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f6f8f6;
+  box-shadow: 0 1px 2px rgb(31 41 55 / 4%);
+}
+
+.map-workspace-panel .map-canvas {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+}
+
 .map-coordinate-row {
   padding: 12px 14px;
 }
@@ -787,12 +805,12 @@ h3 {
   min-width: 72px;
   max-width: 220px;
   min-height: 30px;
-  border: 2px solid white;
+  border: 2px solid rgb(255 255 255 / 92%);
   border-radius: 999px;
   padding: 0 11px;
-  background: rgb(64 158 255 / 94%);
+  background: var(--marker-color, #4285f4);
   color: white;
-  box-shadow: 0 8px 20px rgb(31 41 55 / 26%);
+  box-shadow: 0 5px 14px rgb(31 41 55 / 20%);
   font-size: 12px;
   font-weight: 900;
   line-height: 1;
@@ -803,7 +821,8 @@ h3 {
 
 .building-marker-selected {
   min-height: 34px;
-  background: #1f2937;
+  border-color: white;
+  outline: 3px solid rgb(31 41 55 / 22%);
   transform: translateY(-2px);
 }
 
@@ -1075,7 +1094,8 @@ h3 {
   }
 
   .content:has(.inventory-stack),
-  .content:has(.global-units-panel) {
+  .content:has(.global-units-panel),
+  .content:has(.map-workspace-panel) {
     height: auto;
     overflow: visible;
   }

@@ -496,9 +496,9 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       subtitle: "Filter every unit by building, status, layout, price context, and listing readiness."
     },
     map: {
-      eyebrow: "Map editor",
-      title: "Building locations",
-      subtitle: "Select a building and drag its marker to keep map coordinates aligned."
+      eyebrow: "Map",
+      title: "Building map",
+      subtitle: "View all buildings on one light map. Pin colors are grouped by area."
     }
   }[mode];
 
@@ -515,7 +515,13 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             <RefreshCcw size={16} />
             Refresh
           </button>
-          {canEdit && mode !== "units" ? (
+          {mode === "map" && draft ? (
+            <button className="button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
+              <Save size={16} />
+              Save location
+            </button>
+          ) : null}
+          {canEdit && mode === "building" ? (
             <button className="button" onClick={createBuildingDraft} type="button">
               <Plus size={16} />
               New building
@@ -528,7 +534,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       {message ? <div className="message compact-message">{message}</div> : null}
       {!canEdit ? <div className="message compact-message">Viewer role is read-only.</div> : null}
 
-      {mode === "units" ? (
+      {mode === "map" ? null : mode === "units" ? (
         <section className="ops-toolbar unit-ops-toolbar">
           <label className="search-box">
             <Search size={16} />
@@ -610,7 +616,17 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         </section>
       )}
 
-      {mode === "units" ? (
+      {mode === "map" ? (
+        <section className="map-workspace-panel">
+          <BuildingMap
+            buildings={buildings}
+            canEdit={canEdit}
+            onCoordinateChange={updateDraftCoordinate}
+            onSelect={selectBuilding}
+            selectedBuilding={selectedBuilding}
+          />
+        </section>
+      ) : mode === "units" ? (
         <UnitManager
           buildingsByID={buildingByID}
           canEdit={canEdit}
@@ -643,51 +659,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             />
           </section>
 
-          {mode === "map" ? (
-            <section className="data-panel map-editor-panel">
-              <div className="panel-heading">
-                <div>
-                  <div className="eyebrow">Map view</div>
-                  <h3>{selectedBuilding ? selectedBuilding.name : "Select a building"}</h3>
-                </div>
-                {draft ? (
-                  <button className="button compact-button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
-                    <Save size={14} />
-                    Save location
-                  </button>
-                ) : null}
-              </div>
-              <BuildingMap
-                buildings={filteredBuildings}
-                canEdit={canEdit}
-                onCoordinateChange={updateDraftCoordinate}
-                onSelect={selectBuilding}
-                selectedBuilding={selectedBuilding}
-              />
-              {draft ? (
-                <div className="geo-row map-coordinate-row">
-                  <NumberField
-                    disabled={!canEdit}
-                    label="Latitude"
-                    step="0.000001"
-                    value={draft.latitude}
-                    onChange={(value) => updateDraft("latitude", value ?? draft.latitude)}
-                  />
-                  <NumberField
-                    disabled={!canEdit}
-                    label="Longitude"
-                    step="0.000001"
-                    value={draft.longitude}
-                    onChange={(value) => updateDraft("longitude", value ?? draft.longitude)}
-                  />
-                  <button className="button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
-                    <Save size={16} />
-                    Save
-                  </button>
-                </div>
-              ) : null}
-            </section>
-          ) : null}
         </div>
       )}
 

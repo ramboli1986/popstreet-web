@@ -3,18 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Archive,
-  Building2,
   Check,
-  Edit3,
   EyeOff,
-  LocateFixed,
-  MapPinned,
+  Pencil,
   Plus,
   RefreshCcw,
   Save,
   Search,
   Trash2,
-  UploadCloud
+  UploadCloud,
+  X
 } from "lucide-react";
 import { BuildingMap } from "./building-map";
 import { supabase } from "@/lib/supabase";
@@ -30,10 +28,9 @@ import type { AccountProfile, Building, ListingStatus, Neighborhood, Unit, UnitL
 
 type BuildingManagerProps = {
   profile: AccountProfile | null;
-  mode: "inventory" | "map";
+  mode: "building" | "units" | "map";
 };
 
-type InventoryTab = "profile" | "units" | "map";
 type StatusFilter = "all" | "active" | "archived";
 type UnitIndex = Pick<Unit, "id" | "building_id">;
 type BuildingMetric = {
@@ -53,10 +50,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null);
   const [draft, setDraft] = useState<Building | null>(null);
   const [units, setUnits] = useState<UnitWithListing[]>([]);
+  const [isBuildingEditorOpen, setIsBuildingEditorOpen] = useState(false);
+  const [unitDialogDraft, setUnitDialogDraft] = useState<UnitWithListing | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [areaFilter, setAreaFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState<InventoryTab>(mode === "map" ? "map" : "profile");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -159,12 +157,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   useEffect(() => {
     loadUnits(selectedBuilding);
   }, [loadUnits, selectedBuilding]);
-
-  useEffect(() => {
-    if (mode === "map") {
-      setActiveTab("map");
-    }
-  }, [mode]);
 
   const buildingMetrics = useMemo(() => {
     const latestListingByUnit = new Map<string, UnitListing>();
@@ -302,10 +294,10 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       neighborhoods: null
     };
 
-    setActiveTab("profile");
     setSelectedBuilding(nextDraft);
     setDraft(nextDraft);
     setUnits([]);
+    setIsBuildingEditorOpen(true);
   }
 
   async function saveBuilding() {
@@ -338,6 +330,12 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     });
     setSelectedBuilding(savedBuilding);
     setDraft({ ...savedBuilding });
+    setIsBuildingEditorOpen(false);
+  }
+
+  function openBuildingEditor(building: Building) {
+    selectBuilding(building);
+    setIsBuildingEditorOpen(true);
   }
 
   async function setBuildingActive(building: Building, nextIsActive: boolean) {
@@ -389,6 +387,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setBuildings(remaining);
     setSelectedBuilding(nextSelected);
     setDraft(nextSelected ? { ...nextSelected } : null);
+    setIsBuildingEditorOpen(false);
     setMessage("Building deleted.");
   }
 
@@ -397,15 +396,50 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     await loadUnits(selectedBuilding);
   }
 
+  function openAddUnitDialog(building: Building | null = selectedBuilding) {
+    if (!building || building.id.startsWith("new-")) {
+      return;
+    }
+
+    selectBuilding(building);
+    setUnitDialogDraft(createUnitDraft(building));
+  }
+
+  function openEditUnitDialog(unit: UnitWithListing) {
+    const unitBuilding = buildings.find((building) => building.id === unit.building_id) ?? selectedBuilding;
+
+    if (unitBuilding) {
+      selectBuilding(unitBuilding);
+    }
+
+    setUnitDialogDraft(unit);
+  }
+
+  const pageCopy = {
+    building: {
+      eyebrow: "Building",
+      title: "Building list",
+      subtitle: "Search, edit, archive, delete, and add units from the building list."
+    },
+    units: {
+      eyebrow: "Units",
+      title: "Unit lists",
+      subtitle: "Select a building, then open a unit card to edit pricing, deals, and listing status."
+    },
+    map: {
+      eyebrow: "Map editor",
+      title: "Building locations",
+      subtitle: "Select a building and drag its marker to keep map coordinates aligned."
+    }
+  }[mode];
+
   return (
     <>
       <div className="content-header console-header">
         <div>
-          <div className="eyebrow">{mode === "map" ? "Map editor" : "Inventory command"}</div>
-          <h2>{mode === "map" ? "Building locations" : "Buildings and available units"}</h2>
-          <p className="header-subtitle">
-            Search, edit, publish, unlist, and keep app-facing inventory in sync from one screen.
-          </p>
+          <div className="eyebrow">{pageCopy.eyebrow}</div>
+          <h2>{pageCopy.title}</h2>
+          <p className="header-subtitle">{pageCopy.subtitle}</p>
         </div>
         <div className="topbar-actions">
           <button className="ghost-button" disabled={isLoading} onClick={refreshAll} type="button">
@@ -457,12 +491,12 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         </div>
       </section>
 
-      <div className={`operations-grid ${mode === "map" ? "map-mode" : ""}`}>
-        <section className="data-panel">
+      <div className={`inventory-stack ${mode === "building" ? "building-only" : ""}`}>
+        <section className="data-panel building-list-panel">
           <div className="panel-heading">
             <div>
               <div className="eyebrow">Building list</div>
-              <h3>Fast query and edit</h3>
+              <h3>{mode === "units" ? "Choose a building" : "Fast query and edit"}</h3>
             </div>
             <span className="count-pill">{buildings.length} total</span>
           </div>
@@ -473,140 +507,102 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             selectedBuilding={selectedBuilding}
             onArchive={(building) => setBuildingActive(building, false)}
             onDelete={deleteBuilding}
-            onManageUnits={(building) => {
-              selectBuilding(building);
-              setActiveTab("units");
-            }}
+            onEdit={openBuildingEditor}
+            onAddUnit={openAddUnitDialog}
             onRestore={(building) => setBuildingActive(building, true)}
             onSelect={selectBuilding}
-            onShowMap={(building) => {
-              selectBuilding(building);
-              setActiveTab("map");
-            }}
           />
         </section>
 
-        <aside className="inspector-panel">
-          <div className="inspector-summary">
-            <div>
-              <div className="eyebrow">Selected building</div>
-              <h3>{draft?.name ?? "No building selected"}</h3>
-              <p className="muted">
-                {draft
-                  ? `${draft.area || draft.neighborhoods?.name || draft.city}, ${draft.state}`
-                  : "Choose a row to edit building and units."}
-              </p>
+        {mode === "units" && selectedBuilding && !selectedBuilding.id.startsWith("new-") ? (
+          <UnitManager
+            building={selectedBuilding}
+            canEdit={canEdit}
+            onAddUnit={() => openAddUnitDialog(selectedBuilding)}
+            onEditUnit={openEditUnitDialog}
+            units={units}
+          />
+        ) : null}
+
+        {mode === "units" && (!selectedBuilding || selectedBuilding.id.startsWith("new-")) ? (
+          <section className="data-panel units-list-panel">
+            <EmptyState title="Select a building" body="Choose a building above to view or add units." />
+          </section>
+        ) : null}
+
+        {mode === "map" ? (
+          <section className="data-panel map-editor-panel">
+            <div className="panel-heading">
+              <div>
+                <div className="eyebrow">Map view</div>
+                <h3>{selectedBuilding ? selectedBuilding.name : "Select a building"}</h3>
+              </div>
+              {draft ? (
+                <button className="button compact-button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
+                  <Save size={14} />
+                  Save location
+                </button>
+              ) : null}
             </div>
+            <BuildingMap
+              buildings={filteredBuildings}
+              canEdit={canEdit}
+              onCoordinateChange={updateDraftCoordinate}
+              onSelect={selectBuilding}
+              selectedBuilding={selectedBuilding}
+            />
             {draft ? (
-              <div className="inspector-quick-actions">
-                <span className={`status-pill ${draft.is_active ? "active" : "suspended"}`}>
-                  {draft.is_active ? "Active" : "Archived"}
-                </span>
-                {!draft.id.startsWith("new-") ? (
-                  <button
-                    className="button compact-button"
-                    disabled={!canEdit}
-                    onClick={() => setActiveTab("units")}
-                    type="button"
-                  >
-                    <Plus size={14} />
-                    Add unit
-                  </button>
-                ) : null}
+              <div className="geo-row map-coordinate-row">
+                <NumberField
+                  disabled={!canEdit}
+                  label="Latitude"
+                  step="0.000001"
+                  value={draft.latitude}
+                  onChange={(value) => updateDraft("latitude", value ?? draft.latitude)}
+                />
+                <NumberField
+                  disabled={!canEdit}
+                  label="Longitude"
+                  step="0.000001"
+                  value={draft.longitude}
+                  onChange={(value) => updateDraft("longitude", value ?? draft.longitude)}
+                />
+                <button className="button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
+                  <Save size={16} />
+                  Save
+                </button>
               </div>
             ) : null}
-          </div>
-
-          <div className="inspector-tabs" role="tablist" aria-label="Inventory sections">
-            <button
-              className={activeTab === "profile" ? "active" : ""}
-              onClick={() => setActiveTab("profile")}
-              type="button"
-            >
-              <Edit3 size={15} />
-              Profile
-            </button>
-            <button className={activeTab === "units" ? "active" : ""} onClick={() => setActiveTab("units")} type="button">
-              <Building2 size={15} />
-              Units
-            </button>
-            <button className={activeTab === "map" ? "active" : ""} onClick={() => setActiveTab("map")} type="button">
-              <MapPinned size={15} />
-              Map
-            </button>
-          </div>
-
-          {activeTab === "profile" && draft ? (
-            <BuildingEditor
-              canEdit={canEdit}
-              draft={draft}
-              isSaving={isSaving}
-              neighborhoods={neighborhoods}
-              onArchive={() => setBuildingActive(draft, false)}
-              onRestore={() => setBuildingActive(draft, true)}
-              onSave={saveBuilding}
-              updateDraft={updateDraft}
-            />
-          ) : null}
-
-          {activeTab === "units" && draft ? (
-            draft.id.startsWith("new-") ? (
-              <EmptyState title="Save building first" body="Units can be added after the building has a database ID." />
-            ) : (
-              <UnitManager
-                building={draft}
-                canEdit={canEdit}
-                onRefresh={async () => {
-                  await loadUnits(draft);
-                  await loadBuildings();
-                }}
-                units={units}
-              />
-            )
-          ) : null}
-
-          {activeTab === "map" ? (
-            <section className="map-editor-panel">
-              <div className="panel-heading compact">
-                <div>
-                  <div className="eyebrow">Coordinates</div>
-                  <h3>{draft ? "Drag selected pin to update" : "Building map"}</h3>
-                </div>
-                <span className="count-pill">{filteredBuildings.length} pins</span>
-              </div>
-              <BuildingMap
-                buildings={filteredBuildings}
-                canEdit={canEdit}
-                selectedBuilding={draft}
-                onCoordinateChange={updateDraftCoordinate}
-                onSelect={selectBuilding}
-              />
-              {draft ? (
-                <div className="geo-row">
-                  <NumberField
-                    disabled={!canEdit}
-                    label="Latitude"
-                    step="0.000001"
-                    value={draft.latitude}
-                    onChange={(value) => updateDraft("latitude", value ?? 0)}
-                  />
-                  <NumberField
-                    disabled={!canEdit}
-                    label="Longitude"
-                    step="0.000001"
-                    value={draft.longitude}
-                    onChange={(value) => updateDraft("longitude", value ?? 0)}
-                  />
-                  <button className="button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
-                    <LocateFixed size={16} />
-                    Save location
-                  </button>
-                </div>
-              ) : null}
-            </section>
-          ) : null}
-        </aside>
+          </section>
+        ) : null}
       </div>
+
+      {isBuildingEditorOpen && draft ? (
+        <BuildingEditorDialog
+          canEdit={canEdit}
+          draft={draft}
+          isSaving={isSaving}
+          neighborhoods={neighborhoods}
+          onArchive={() => setBuildingActive(draft, false)}
+          onClose={() => setIsBuildingEditorOpen(false)}
+          onRestore={() => setBuildingActive(draft, true)}
+          onSave={saveBuilding}
+          updateDraft={updateDraft}
+        />
+      ) : null}
+
+      {unitDialogDraft && selectedBuilding ? (
+        <UnitEditorDialog
+          building={selectedBuilding}
+          canEdit={canEdit}
+          onClose={() => setUnitDialogDraft(null)}
+          onSaved={async () => {
+            await loadUnits(selectedBuilding);
+            await loadBuildings();
+          }}
+          unit={unitDialogDraft}
+        />
+      ) : null}
     </>
   );
 }
@@ -617,22 +613,22 @@ function BuildingTable({
   metrics,
   selectedBuilding,
   onArchive,
+  onAddUnit,
   onDelete,
-  onManageUnits,
+  onEdit,
   onRestore,
-  onSelect,
-  onShowMap
+  onSelect
 }: {
   buildings: Building[];
   canEdit: boolean;
   metrics: Map<string, BuildingMetric>;
   selectedBuilding: Building | null;
   onArchive: (building: Building) => void;
+  onAddUnit: (building: Building) => void;
   onDelete: (building: Building) => void;
-  onManageUnits: (building: Building) => void;
+  onEdit: (building: Building) => void;
   onRestore: (building: Building) => void;
   onSelect: (building: Building) => void;
-  onShowMap: (building: Building) => void;
 }) {
   if (buildings.length === 0) {
     return <EmptyState title="No buildings found" body="Try clearing the search or location filters." />;
@@ -684,12 +680,13 @@ function BuildingTable({
                 </td>
                 <td>
                   <div className="row-actions">
-                    <button className="mini-action" onClick={() => onManageUnits(building)} type="button">
-                      <Plus size={14} />
-                      Units
+                    <button className="mini-action" disabled={!canEdit} onClick={() => onEdit(building)} type="button">
+                      <Pencil size={14} />
+                      Edit
                     </button>
-                    <button className="icon-button" onClick={() => onShowMap(building)} title="Show on map" type="button">
-                      <MapPinned size={15} />
+                    <button className="mini-action" disabled={!canEdit} onClick={() => onAddUnit(building)} type="button">
+                      <Plus size={14} />
+                      Add unit
                     </button>
                     {building.is_active ? (
                       <button
@@ -890,64 +887,81 @@ function BuildingEditor({
   );
 }
 
+function BuildingEditorDialog({
+  canEdit,
+  draft,
+  isSaving,
+  neighborhoods,
+  updateDraft,
+  onArchive,
+  onClose,
+  onRestore,
+  onSave
+}: {
+  canEdit: boolean;
+  draft: Building;
+  isSaving: boolean;
+  neighborhoods: Neighborhood[];
+  updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
+  onArchive: () => void;
+  onClose: () => void;
+  onRestore: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
+      <aside className="side-drawer building-drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="drawer-header">
+          <div>
+            <div className="eyebrow">Building profile</div>
+            <h3>{draft.id.startsWith("new-") ? "New building" : draft.name}</h3>
+          </div>
+          <button className="icon-button" onClick={onClose} title="Close" type="button">
+            <X size={16} />
+          </button>
+        </header>
+        <div className="drawer-body">
+          <BuildingEditor
+            canEdit={canEdit}
+            draft={draft}
+            isSaving={isSaving}
+            neighborhoods={neighborhoods}
+            onArchive={onArchive}
+            onRestore={onRestore}
+            onSave={onSave}
+            updateDraft={updateDraft}
+          />
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function UnitManager({
   building,
   units,
   canEdit,
-  onRefresh
+  onAddUnit,
+  onEditUnit
 }: {
   building: Building;
   units: UnitWithListing[];
   canEdit: boolean;
-  onRefresh: () => void;
+  onAddUnit: () => void;
+  onEditUnit: (unit: UnitWithListing) => void;
 }) {
-  const [isAdding, setIsAdding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function addUnit() {
-    if (!canEdit) {
-      return;
-    }
-
-    setIsAdding(true);
-    setError(null);
-
-    const unitNumber = `New-${Date.now().toString().slice(-4)}`;
-    const { error: unitError } = await supabase.from("units").insert({
-      building_id: building.id,
-      unit_number: unitNumber,
-      name: `${unitNumber} - 1 Bed`,
-      bedroom_count: 1,
-      bathroom_count: 1,
-      sqft: null,
-      floor: null,
-      description_labels: ["Admin created"]
-    });
-
-    setIsAdding(false);
-
-    if (unitError) {
-      setError(unitError.message);
-      return;
-    }
-
-    onRefresh();
-  }
-
   return (
-    <section className="units-panel">
+    <section className="data-panel units-list-panel">
       <div className="panel-heading compact">
         <div>
           <div className="eyebrow">Available unit lists</div>
           <h3>{building.name}</h3>
         </div>
-        <button className="button compact-button" disabled={!canEdit || isAdding} onClick={addUnit} type="button">
+        <button className="button compact-button" disabled={!canEdit} onClick={onAddUnit} type="button">
           <Plus size={15} />
           Add unit
         </button>
       </div>
-
-      {error ? <div className="message error compact-message">{error}</div> : null}
 
       {units.length === 0 ? (
         <EmptyState title="No units yet" body="Add a unit, then publish its listing when pricing is ready." />
@@ -963,7 +977,7 @@ function UnitManager({
               <span>Actions</span>
             </div>
             {units.map((unit) => (
-              <UnitListingRow canEdit={canEdit} key={unit.id} onSaved={onRefresh} unit={unit} />
+              <UnitListingRow canEdit={canEdit} key={unit.id} onEditUnit={onEditUnit} unit={unit} />
             ))}
           </div>
         </div>
@@ -972,7 +986,68 @@ function UnitManager({
   );
 }
 
-function UnitListingRow({ unit, canEdit, onSaved }: { unit: UnitWithListing; canEdit: boolean; onSaved: () => void }) {
+function UnitListingRow({
+  unit,
+  canEdit,
+  onEditUnit
+}: {
+  unit: UnitWithListing;
+  canEdit: boolean;
+  onEditUnit: (unit: UnitWithListing) => void;
+}) {
+  const listing = unit.listing ?? defaultListing(unit.id);
+
+  return (
+    <div className="unit-table-row unit-table-row-readonly">
+      <div className="unit-cell unit-identity">
+        <button className="table-primary-link unit-number-link" onClick={() => onEditUnit(unit)} type="button">
+          {unit.unit_number || "No unit #"}
+        </button>
+        <div className="table-subtext">{unit.name || "Untitled unit"}</div>
+      </div>
+      <div className="unit-cell unit-summary-cell">
+        <strong>
+          {unit.bedroom_count} bd / {unit.bathroom_count} ba
+        </strong>
+        <span>{unit.sqft ? `${unit.sqft.toLocaleString()} sqft` : "Sqft not set"}</span>
+      </div>
+      <div className="unit-cell unit-summary-cell">
+        <strong>{formatMoneyFromCents(listing.net_price_cents)}</strong>
+        <span>Market {formatMoneyFromCents(listing.market_price_cents)}</span>
+        <span>Cashback {formatMoneyFromCents(listing.cash_back_cents)}</span>
+      </div>
+      <div className="unit-cell unit-summary-cell">
+        <strong>{listing.lease_deal || "No deal"}</strong>
+        <span>{listing.available_from ? `Move in ${formatDate(listing.available_from)}` : "Move-in not set"}</span>
+      </div>
+      <div className="unit-cell">
+        <span className={`status-pill ${listing.status === "available" ? "active" : "suspended"}`}>
+          {listing.status}
+        </span>
+      </div>
+      <div className="unit-cell unit-actions">
+        <button className="mini-action" disabled={!canEdit} onClick={() => onEditUnit(unit)} type="button">
+          <Pencil size={14} />
+          Edit card
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function UnitEditorDialog({
+  building,
+  unit,
+  canEdit,
+  onClose,
+  onSaved
+}: {
+  building: Building;
+  unit: UnitWithListing;
+  canEdit: boolean;
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
   const [draft, setDraft] = useState(unit);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1001,31 +1076,49 @@ function UnitListingRow({ unit, canEdit, onSaved }: { unit: UnitWithListing; can
     setIsSaving(true);
     setError(null);
 
-    const { error: unitError } = await supabase
-      .from("units")
-      .update({
-        unit_number: nextDraft.unit_number,
-        name: nextDraft.name,
-        description: nextDraft.description,
-        bedroom_count: nextDraft.bedroom_count,
-        bathroom_count: nextDraft.bathroom_count,
-        sqft: nextDraft.sqft,
-        floor: nextDraft.floor,
-        description_labels: nextDraft.description_labels
-      })
-      .eq("id", nextDraft.id);
+    const isNew = nextDraft.id.startsWith("new-");
+    const unitPayload = {
+      building_id: building.id,
+      unit_number: nextDraft.unit_number,
+      name: nextDraft.name || `Unit ${nextDraft.unit_number}`,
+      description: nextDraft.description,
+      bedroom_count: nextDraft.bedroom_count,
+      bathroom_count: nextDraft.bathroom_count,
+      sqft: nextDraft.sqft,
+      floor: nextDraft.floor,
+      description_labels: nextDraft.description_labels
+    };
 
-    if (unitError) {
-      setError(unitError.message);
+    const unitResult = isNew
+      ? await supabase.from("units").insert(unitPayload).select("*").single()
+      : await supabase
+          .from("units")
+          .update({
+            unit_number: nextDraft.unit_number,
+            name: unitPayload.name,
+            description: unitPayload.description,
+            bedroom_count: unitPayload.bedroom_count,
+            bathroom_count: unitPayload.bathroom_count,
+            sqft: unitPayload.sqft,
+            floor: unitPayload.floor,
+            description_labels: unitPayload.description_labels
+          })
+          .eq("id", nextDraft.id)
+          .select("*")
+          .single();
+
+    if (unitResult.error) {
+      setError(unitResult.error.message);
       setIsSaving(false);
       return;
     }
 
-    const listing = nextDraft.listing ? { ...defaultListing(nextDraft.id), ...nextDraft.listing } : null;
+    const savedUnit = unitResult.data as Unit;
+    const listing = nextDraft.listing ? { ...defaultListing(savedUnit.id), ...nextDraft.listing, unit_id: savedUnit.id } : null;
 
     if (listing) {
       const listingPayload = {
-        unit_id: nextDraft.id,
+        unit_id: savedUnit.id,
         status: listing.status,
         market_price_cents: listing.market_price_cents,
         net_price_cents: listing.net_price_cents,
@@ -1038,9 +1131,10 @@ function UnitListingRow({ unit, canEdit, onSaved }: { unit: UnitWithListing; can
         unavailable_at: listing.status === "available" ? null : listing.unavailable_at
       };
 
-      const listingResult = listing.id
-        ? await supabase.from("unit_listings").update(listingPayload).eq("id", listing.id)
-        : await supabase.from("unit_listings").insert(listingPayload);
+      const listingResult =
+        listing.id && !isNew
+          ? await supabase.from("unit_listings").update(listingPayload).eq("id", listing.id)
+          : await supabase.from("unit_listings").insert(listingPayload);
 
       if (listingResult.error) {
         setError(listingResult.error.message);
@@ -1050,7 +1144,8 @@ function UnitListingRow({ unit, canEdit, onSaved }: { unit: UnitWithListing; can
     }
 
     setIsSaving(false);
-    onSaved();
+    await onSaved();
+    onClose();
   }
 
   async function publishUnit() {
@@ -1089,6 +1184,11 @@ function UnitListingRow({ unit, canEdit, onSaved }: { unit: UnitWithListing; can
       return;
     }
 
+    if (draft.id.startsWith("new-")) {
+      onClose();
+      return;
+    }
+
     const confirmed = window.confirm(`Delete unit ${draft.unit_number}? This also removes its listing history.`);
 
     if (!confirmed) {
@@ -1107,110 +1207,167 @@ function UnitListingRow({ unit, canEdit, onSaved }: { unit: UnitWithListing; can
       return;
     }
 
-    onSaved();
+    await onSaved();
+    onClose();
   }
 
   const listing = draft.listing ?? defaultListing(draft.id);
 
   return (
-    <div className="unit-table-row">
-      <div className="unit-cell unit-identity">
-        <input
-          disabled={!canEdit}
-          value={draft.unit_number}
-          onChange={(event) => setDraft((current) => ({ ...current, unit_number: event.target.value }))}
-        />
-        <input
-          disabled={!canEdit}
-          value={draft.name}
-          onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
-        />
-      </div>
-      <div className="unit-cell unit-layout">
-        <NumberInput
-          disabled={!canEdit}
-          label="Bed"
-          value={draft.bedroom_count}
-          onChange={(value) => setDraft((current) => ({ ...current, bedroom_count: value ?? 0 }))}
-        />
-        <NumberInput
-          disabled={!canEdit}
-          label="Bath"
-          step="0.5"
-          value={draft.bathroom_count}
-          onChange={(value) => setDraft((current) => ({ ...current, bathroom_count: value ?? 0 }))}
-        />
-        <NumberInput
-          disabled={!canEdit}
-          label="Sqft"
-          value={draft.sqft}
-          onChange={(value) => setDraft((current) => ({ ...current, sqft: value == null ? null : Math.round(value) }))}
-        />
-      </div>
-      <div className="unit-cell unit-price">
-        <CentsInput disabled={!canEdit} label="Market" value={listing.market_price_cents} onChange={(value) => updateListing("market_price_cents", value)} />
-        <CentsInput
-          disabled={!canEdit}
-          label="Net"
-          value={listing.net_price_cents}
-          onChange={(value) => updateListing("net_price_cents", value ?? 0)}
-        />
-        <CentsInput
-          disabled={!canEdit}
-          label="Cashback"
-          value={listing.cash_back_cents}
-          onChange={(value) => updateListing("cash_back_cents", value ?? 0)}
-        />
-      </div>
-      <div className="unit-cell unit-deal">
-        <input
-          disabled={!canEdit}
-          placeholder="Lease deal"
-          value={listing.lease_deal ?? ""}
-          onChange={(event) => updateListing("lease_deal", event.target.value || null)}
-        />
-        <input
-          disabled={!canEdit}
-          type="date"
-          value={listing.available_from ?? ""}
-          onChange={(event) => updateListing("available_from", event.target.value || null)}
-        />
-      </div>
-      <div className="unit-cell">
-        <select
-          disabled={!canEdit}
-          value={listing.status}
-          onChange={(event) => updateListing("status", event.target.value as ListingStatus)}
-        >
-          {listingStatuses.map((status) => (
-            <option key={status} value={status}>
-              {status}
-            </option>
-          ))}
-        </select>
-        <span className={`status-pill ${listing.status === "available" ? "active" : "suspended"}`}>
-          {listing.status}
-        </span>
-      </div>
-      <div className="unit-cell unit-actions">
-        <button className="button compact-button" disabled={!canEdit || isSaving} onClick={() => persistUnit(draft)} type="button">
-          <Save size={14} />
-          Save
-        </button>
-        <button className="ghost-button compact-button" disabled={!canEdit || isSaving} onClick={publishUnit} type="button">
-          <UploadCloud size={14} />
-          Publish
-        </button>
-        <button className="ghost-button compact-button" disabled={!canEdit || isSaving} onClick={unlistUnit} type="button">
-          <EyeOff size={14} />
-          Unlist
-        </button>
-        <button className="danger-button compact-button" disabled={!canEdit || isSaving} onClick={deleteUnit} type="button">
-          <Trash2 size={14} />
-          Delete
-        </button>
-        {error ? <span className="row-error">{error}</span> : null}
-      </div>
+    <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
+      <aside className="side-drawer unit-drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+        <header className="drawer-header">
+          <div>
+            <div className="eyebrow">{building.name}</div>
+            <h3>{draft.id.startsWith("new-") ? "Add unit" : `Unit ${draft.unit_number}`}</h3>
+          </div>
+          <button className="icon-button" onClick={onClose} title="Close" type="button">
+            <X size={16} />
+          </button>
+        </header>
+
+        <div className="drawer-body">
+          {error ? <div className="message error compact-message">{error}</div> : null}
+
+          <section className="unit-editor-card">
+            <div className="form-section-title">Unit</div>
+            <div className="form-grid dense">
+              <InputField
+                disabled={!canEdit}
+                label="Unit number"
+                value={draft.unit_number}
+                onChange={(value) => setDraft((current) => ({ ...current, unit_number: value }))}
+              />
+              <InputField
+                disabled={!canEdit}
+                label="Display name"
+                value={draft.name}
+                onChange={(value) => setDraft((current) => ({ ...current, name: value }))}
+              />
+              <NumberField
+                disabled={!canEdit}
+                label="Floor"
+                value={draft.floor}
+                onChange={(value) => setDraft((current) => ({ ...current, floor: value == null ? null : Math.round(value) }))}
+              />
+              <InputField
+                disabled={!canEdit}
+                label="Description labels"
+                value={stringArrayToInput(draft.description_labels)}
+                onChange={(value) => setDraft((current) => ({ ...current, description_labels: toStringArray(value) }))}
+              />
+            </div>
+          </section>
+
+          <section className="unit-editor-card">
+            <div className="form-section-title">Layout</div>
+            <div className="form-grid dense three">
+              <NumberField
+                disabled={!canEdit}
+                label="Bedrooms"
+                value={draft.bedroom_count}
+                onChange={(value) => setDraft((current) => ({ ...current, bedroom_count: value ?? 0 }))}
+              />
+              <NumberField
+                disabled={!canEdit}
+                label="Bathrooms"
+                step="0.5"
+                value={draft.bathroom_count}
+                onChange={(value) => setDraft((current) => ({ ...current, bathroom_count: value ?? 0 }))}
+              />
+              <NumberField
+                disabled={!canEdit}
+                label="Sqft"
+                value={draft.sqft}
+                onChange={(value) => setDraft((current) => ({ ...current, sqft: value == null ? null : Math.round(value) }))}
+              />
+            </div>
+          </section>
+
+          <section className="unit-editor-card">
+            <div className="form-section-title">Price</div>
+            <div className="form-grid dense three">
+              <CentsInput
+                disabled={!canEdit}
+                label="Market"
+                value={listing.market_price_cents}
+                onChange={(value) => updateListing("market_price_cents", value)}
+              />
+              <CentsInput
+                disabled={!canEdit}
+                label="Net"
+                value={listing.net_price_cents}
+                onChange={(value) => updateListing("net_price_cents", value ?? 0)}
+              />
+              <CentsInput
+                disabled={!canEdit}
+                label="Cashback"
+                value={listing.cash_back_cents}
+                onChange={(value) => updateListing("cash_back_cents", value ?? 0)}
+              />
+            </div>
+          </section>
+
+          <section className="unit-editor-card">
+            <div className="form-section-title">Deal and status</div>
+            <div className="form-grid dense">
+              <InputField
+                disabled={!canEdit}
+                label="Lease deal"
+                value={listing.lease_deal ?? ""}
+                onChange={(value) => updateListing("lease_deal", value || null)}
+              />
+              <NumberField
+                disabled={!canEdit}
+                label="Free months"
+                step="0.5"
+                value={listing.free_months}
+                onChange={(value) => updateListing("free_months", value ?? 0)}
+              />
+              <InputField
+                disabled={!canEdit}
+                label="Available from"
+                type="date"
+                value={listing.available_from ?? ""}
+                onChange={(value) => updateListing("available_from", value || null)}
+              />
+              <label className="field">
+                <span>Status</span>
+                <select
+                  disabled={!canEdit}
+                  value={listing.status}
+                  onChange={(event) => updateListing("status", event.target.value as ListingStatus)}
+                >
+                  {listingStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </section>
+        </div>
+
+        <footer className="drawer-footer">
+          <button className="ghost-button" disabled={!canEdit || isSaving} onClick={unlistUnit} type="button">
+            <EyeOff size={15} />
+            Unlist
+          </button>
+          <button className="ghost-button" disabled={!canEdit || isSaving} onClick={publishUnit} type="button">
+            <UploadCloud size={15} />
+            Publish
+          </button>
+          <button className="danger-button" disabled={!canEdit || isSaving} onClick={deleteUnit} type="button">
+            <Trash2 size={15} />
+            Delete
+          </button>
+          <button className="button" disabled={!canEdit || isSaving} onClick={() => persistUnit(draft)} type="button">
+            <Save size={15} />
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+        </footer>
+      </aside>
     </div>
   );
 }
@@ -1263,33 +1420,6 @@ function NumberField({
   );
 }
 
-function NumberInput({
-  label,
-  value,
-  onChange,
-  disabled,
-  step = "1"
-}: {
-  label: string;
-  value: number | null;
-  onChange: (value: number | null) => void;
-  disabled?: boolean;
-  step?: string;
-}) {
-  return (
-    <label className="compact-field">
-      <span>{label}</span>
-      <input
-        disabled={disabled}
-        step={step}
-        type="number"
-        value={value ?? ""}
-        onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))}
-      />
-    </label>
-  );
-}
-
 function CentsInput({
   label,
   value,
@@ -1321,6 +1451,27 @@ function EmptyState({ title, body }: { title: string; body: string }) {
       <p>{body}</p>
     </div>
   );
+}
+
+function createUnitDraft(building: Building): UnitWithListing {
+  const now = new Date().toISOString();
+  const draftID = `new-unit-${Date.now()}`;
+
+  return {
+    id: draftID,
+    building_id: building.id,
+    unit_number: "",
+    name: "",
+    description: null,
+    bedroom_count: 1,
+    bathroom_count: 1,
+    sqft: null,
+    floor: null,
+    description_labels: [],
+    created_at: now,
+    updated_at: now,
+    listing: defaultListing(draftID)
+  };
 }
 
 function defaultListing(unitID: string): UnitListing {

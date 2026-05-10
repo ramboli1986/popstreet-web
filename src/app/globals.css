@@ -230,7 +230,8 @@ h3 {
   padding: 18px;
 }
 
-.content:has(.operations-grid) {
+.content:has(.operations-grid),
+.content:has(.inventory-stack) {
   display: flex;
   height: calc(100vh - 58px);
   min-height: 0;
@@ -532,6 +533,19 @@ h3 {
   grid-template-columns: minmax(420px, 0.9fr) minmax(580px, 1.1fr);
 }
 
+.inventory-stack {
+  display: grid;
+  grid-template-rows: minmax(260px, 0.85fr) minmax(320px, 1.15fr);
+  flex: 1;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.inventory-stack.building-only {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .data-panel,
 .inspector-panel {
   min-width: 0;
@@ -685,6 +699,10 @@ h3 {
   overflow: hidden;
 }
 
+.map-coordinate-row {
+  padding: 12px 14px;
+}
+
 .form-section-title {
   margin: 4px 0 10px;
   color: #374151;
@@ -699,6 +717,10 @@ h3 {
 .form-grid.dense {
   gap: 10px;
   margin-bottom: 14px;
+}
+
+.form-grid.three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .field {
@@ -831,6 +853,26 @@ h3 {
   background: white;
 }
 
+.unit-table-row-readonly .unit-cell {
+  align-content: center;
+  min-height: 82px;
+}
+
+.unit-summary-cell {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.unit-summary-cell strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.unit-number-link {
+  width: fit-content;
+  font-size: 15px;
+}
+
 .unit-identity,
 .unit-deal,
 .unit-actions {
@@ -872,6 +914,74 @@ h3 {
   color: var(--ink);
 }
 
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  justify-content: flex-end;
+  background: rgb(15 23 42 / 24%);
+}
+
+.side-drawer {
+  display: flex;
+  width: min(620px, 100vw);
+  height: 100%;
+  min-width: 0;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--surface);
+  box-shadow: -18px 0 42px rgb(15 23 42 / 18%);
+}
+
+.building-drawer {
+  width: min(760px, 100vw);
+}
+
+.drawer-header,
+.drawer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--line);
+  padding: 14px 16px;
+}
+
+.drawer-header h3 {
+  margin-top: 3px;
+}
+
+.drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 16px;
+}
+
+.drawer-body .editor-form {
+  padding: 0;
+}
+
+.drawer-footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  background: #fbfcfe;
+}
+
+.unit-editor-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  padding: 12px;
+}
+
+.unit-editor-card + .unit-editor-card {
+  margin-top: 12px;
+}
+
 .accounts-list {
   max-width: 1100px;
 }
@@ -900,6 +1010,7 @@ h3 {
   .main-layout,
   .grid-4,
   .form-grid,
+  .form-grid.three,
   .account-row,
   .geo-row,
   .ops-toolbar {
@@ -935,6 +1046,24 @@ h3 {
 
   .content {
     padding: 12px;
+  }
+
+  .content:has(.inventory-stack) {
+    height: auto;
+    overflow: visible;
+  }
+
+  .inventory-stack {
+    grid-template-rows: auto;
+    overflow: visible;
+  }
+
+  .side-drawer {
+    width: 100vw;
+  }
+
+  .drawer-footer {
+    flex-wrap: wrap;
   }
 
   .content-header {

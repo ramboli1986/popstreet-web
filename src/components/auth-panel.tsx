@@ -52,7 +52,7 @@ export function AuthPanel() {
           <div className="brand-mark">P</div>
           <div className="brand-copy">
             <div className="eyebrow">PopStreet Admin</div>
-            <strong>Inventory console</strong>
+            <strong>Building console</strong>
           </div>
         </div>
 

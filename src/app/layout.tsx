@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "PopStreet Admin",
-  description: "Inventory management console for PopStreet"
+  description: "Building and unit management console for PopStreet"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

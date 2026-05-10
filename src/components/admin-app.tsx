@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { Building2, LayoutDashboard, LogOut, MapPinned, ShieldCheck, UsersRound } from "lucide-react";
+import { Building2, DoorOpen, LayoutDashboard, LogOut, MapPinned, ShieldCheck, UsersRound } from "lucide-react";
 import { AuthPanel } from "./auth-panel";
 import { AccountsManager } from "./accounts-manager";
 import { BuildingManager } from "./building-manager";
@@ -11,7 +11,16 @@ import { supabase } from "@/lib/supabase";
 import { canManageAccounts, roleLabel } from "@/lib/format";
 import type { AccountProfile } from "@/lib/types";
 
-type ViewKey = "dashboard" | "inventory" | "map" | "accounts";
+type ViewKey = "dashboard" | "building" | "units" | "map" | "accounts";
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_resolve, reject) => {
+      window.setTimeout(() => reject(new Error("Saved login session timed out. Please log in again.")), timeoutMs);
+    })
+  ]);
+}
 
 export function AdminApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -64,13 +73,26 @@ export function AdminApp() {
     let isMounted = true;
 
     async function boot() {
-      const { data } = await supabase.auth.getSession();
-      if (!isMounted) {
-        return;
+      try {
+        const { data } = await withTimeout(supabase.auth.getSession(), 5000);
+        if (!isMounted) {
+          return;
+        }
+        setSession(data.session);
+        await loadProfile(data.session);
+      } catch (sessionError) {
+        if (!isMounted) {
+          return;
+        }
+        supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
+        setSession(null);
+        setProfile(null);
+        setMessage(sessionError instanceof Error ? sessionError.message : "Could not restore the saved session.");
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
-      setSession(data.session);
-      await loadProfile(data.session);
-      setIsLoading(false);
     }
 
     boot();
@@ -91,7 +113,8 @@ export function AdminApp() {
   const navItems = useMemo(
     () => [
       { key: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
-      { key: "inventory" as const, label: "Inventory", icon: Building2 },
+      { key: "building" as const, label: "Building", icon: Building2 },
+      { key: "units" as const, label: "Units", icon: DoorOpen },
       { key: "map" as const, label: "Map edit", icon: MapPinned },
       { key: "accounts" as const, label: "Accounts", icon: UsersRound, requiresAccountAdmin: true }
     ],
@@ -186,7 +209,8 @@ export function AdminApp() {
           ) : null}
 
           {view === "dashboard" ? <Dashboard /> : null}
-          {view === "inventory" ? <BuildingManager mode="inventory" profile={profile} /> : null}
+          {view === "building" ? <BuildingManager mode="building" profile={profile} /> : null}
+          {view === "units" ? <BuildingManager mode="units" profile={profile} /> : null}
           {view === "map" ? <BuildingManager mode="map" profile={profile} /> : null}
           {view === "accounts" && canManageAccounts(profile?.role) ? <AccountsManager currentProfile={profile} /> : null}
         </section>

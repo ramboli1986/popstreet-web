@@ -257,6 +257,10 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       filteredBuildings.reduce((total, building) => total + (buildingMetrics.get(building.id)?.availableCount ?? 0), 0),
     [buildingMetrics, filteredBuildings]
   );
+  const activeBuildingCount = useMemo(
+    () => buildings.filter((building) => building.is_active).length,
+    [buildings]
+  );
 
   const filteredUnits = useMemo(() => {
     const query = unitSearch.trim().toLowerCase();
@@ -518,43 +522,43 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
   const pageCopy = {
     building: {
-      eyebrow: "Building",
-      title: "Building list",
-      subtitle: "Search, edit, archive, delete, and add units from the building list."
+      eyebrow: "Buildings",
+      title: `Inventory · ${buildings.length.toLocaleString()} properties`,
+      subtitle: `${activeBuildingCount.toLocaleString()} active · ${(buildings.length - activeBuildingCount).toLocaleString()} archived · ${filteredAvailableUnitCount.toLocaleString()} available units`
     },
     units: {
-      eyebrow: "Units",
-      title: "All unit lists",
-      subtitle: "Filter every unit by building, status, layout, price context, and listing readiness."
+      eyebrow: "Daily deals",
+      title: "Units & Deals",
+      subtitle: `${filteredUnitStats.total.toLocaleString()} matching units · ${filteredUnitStats.available.toLocaleString()} available right now`
     },
     map: {
-      eyebrow: "Map",
-      title: "Building map",
-      subtitle: "View all buildings on one light map. Pin colors are grouped by area."
+      eyebrow: "Geo & coordinates",
+      title: "Map editor",
+      subtitle: "View buildings on one light map. Pin colors are grouped by area and selected pins can be edited."
     }
   }[mode];
 
   return (
     <>
-      <div className="content-header console-header">
+      <div className="page-hero manager-hero">
         <div>
           <div className="eyebrow">{pageCopy.eyebrow}</div>
-          <h2>{pageCopy.title}</h2>
-          <p className="header-subtitle">{pageCopy.subtitle}</p>
+          <h1>{pageCopy.title}</h1>
+          <p>{pageCopy.subtitle}</p>
         </div>
-        <div className="topbar-actions">
+        <div className="page-actions">
           <button className="ghost-button" disabled={isLoading} onClick={refreshAll} type="button">
             <RefreshCcw size={16} />
             Refresh
           </button>
           {mode === "map" && draft ? (
-            <button className="button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
+            <button className="button dark-button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
               <Save size={16} />
               Save location
             </button>
           ) : null}
           {canEdit && mode === "building" ? (
-            <button className="button" onClick={createBuildingDraft} type="button">
+            <button className="button dark-button" onClick={createBuildingDraft} type="button">
               <Plus size={16} />
               New building
             </button>

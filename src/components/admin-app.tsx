@@ -3,7 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
-import { Building2, DoorOpen, LayoutDashboard, LogOut, MapPinned, ShieldCheck, UsersRound } from "lucide-react";
+import {
+  Building2,
+  ChevronRight,
+  DoorOpen,
+  LayoutDashboard,
+  LogOut,
+  MapPinned,
+  Search,
+  ShieldCheck,
+  UsersRound
+} from "lucide-react";
 import { AuthPanel } from "./auth-panel";
 import { AccountsManager } from "./accounts-manager";
 import { BuildingManager } from "./building-manager";
@@ -23,6 +33,14 @@ const routeByView: Record<ViewKey, string> = {
   units: "/units",
   map: "/map",
   accounts: "/accounts"
+};
+
+const pageTitleByView: Record<ViewKey, string> = {
+  dashboard: "Overview",
+  building: "Buildings",
+  units: "Units & Deals",
+  map: "Map",
+  accounts: "Accounts"
 };
 
 function viewFromPath(pathname: string): ViewKey {
@@ -203,31 +221,18 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
   }
 
   return (
-    <main className="admin-shell">
-      <header className="topbar">
-        <div className="brand-row">
+    <main className="admin-console">
+      <aside className="console-sidebar">
+        <div className="sidebar-brand">
           <div className="brand-mark">P</div>
-          <div className="brand-copy">
-            <div className="eyebrow">PopStreet Admin</div>
-            <strong>Buildings, units, and availability</strong>
+          <div>
+            <div className="brand-name">PopStreet</div>
+            <div className="brand-kicker">Admin Console</div>
           </div>
         </div>
 
-        <div className="topbar-actions">
-          <span className={`role-pill ${profile?.role ?? "viewer"}`}>
-            <ShieldCheck size={14} />
-            {profile ? roleLabel(profile.role) : "No role"}
-          </span>
-          <span className="muted">{session.user.email}</span>
-          <button className="ghost-button" onClick={signOut} type="button">
-            <LogOut size={16} />
-            Sign out
-          </button>
-        </div>
-      </header>
-
-      <div className="main-layout">
-        <aside className="sidebar">
+        <nav className="sidebar-nav" aria-label="Admin navigation">
+          <div className="sidebar-section-label">Workspace</div>
           {navItems
             .filter((item) => !item.requiresAccountAdmin || canManageAccounts(profile?.role))
             .map((item) => {
@@ -247,9 +252,51 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
                 </button>
               );
             })}
-        </aside>
+        </nav>
 
-        <section className="content">
+        <div className="sidebar-health">
+          <div>
+            <span className="health-dot" />
+            Data sources healthy
+          </div>
+          <small>Supabase live</small>
+        </div>
+      </aside>
+
+      <div className="console-main">
+        <header className="console-topbar">
+          <div className="breadcrumb-row">
+            <span>Workspace</span>
+            <ChevronRight size={14} />
+            <strong>{pageTitleByView[view]}</strong>
+          </div>
+
+          <div className="console-topbar-actions">
+            <div className="global-search" aria-hidden="true">
+              <Search size={16} />
+              <span>Search buildings, units, addresses...</span>
+              <kbd>⌘K</kbd>
+            </div>
+            <span className="env-pill">prod</span>
+            <span className={`role-pill ${profile?.role ?? "viewer"}`}>
+              <ShieldCheck size={14} />
+              {profile ? roleLabel(profile.role) : "No role"}
+            </span>
+            <div className="user-chip">
+              <div className="avatar-mark">{(session.user.email ?? "PS").slice(0, 2).toUpperCase()}</div>
+              <div>
+                <strong>{session.user.email}</strong>
+                <span>{profile ? roleLabel(profile.role) : "Signed in"}</span>
+              </div>
+            </div>
+            <button className="ghost-button compact-button" onClick={signOut} type="button">
+              <LogOut size={15} />
+              Sign out
+            </button>
+          </div>
+        </header>
+
+        <section className="console-content">
           {message ? <div className="message" style={{ marginBottom: 14 }}>{message}</div> : null}
           {profile?.role === "viewer" ? (
             <div className="message" style={{ marginBottom: 14 }}>

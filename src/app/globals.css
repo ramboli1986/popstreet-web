@@ -361,7 +361,8 @@ strong {
 
 .console-content:has(.inventory-stack),
 .console-content:has(.global-units-panel),
-.console-content:has(.map-workspace-panel) {
+.console-content:has(.map-workspace-panel),
+.console-content:has(.map-redesign-shell) {
   display: flex;
   height: 100%;
   flex-direction: column;
@@ -1354,6 +1355,202 @@ strong {
   height: 100%;
   min-height: 0;
   border: 0;
+}
+
+.map-redesign-shell {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  background: white;
+}
+
+.map-redesign-statusbar {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-bottom: 1px solid var(--line);
+  background: white;
+  color: #6b7280;
+  font-size: 15px;
+  padding: 0 18px;
+}
+
+.map-reset-button,
+.map-area-mini-action {
+  border: 0;
+  background: transparent;
+  color: #262626;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.map-area-toolbar {
+  display: flex;
+  min-height: 68px;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  background: white;
+  padding: 10px 18px;
+}
+
+.map-area-label {
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.map-area-scroll {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 3px 0;
+}
+
+.map-area-chip {
+  display: inline-flex;
+  height: 32px;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--area-color) 35%, white);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--area-color) 10%, white);
+  color: var(--area-color);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  padding: 0 12px;
+  text-transform: uppercase;
+}
+
+.map-area-chip:not(.active) {
+  opacity: 0.38;
+}
+
+.map-area-chip span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--area-color);
+}
+
+.map-redesign-canvas-frame {
+  min-height: 0;
+  overflow: hidden;
+  background: #f3f4f6;
+}
+
+.map-redesign-canvas-frame .map-canvas {
+  height: 100%;
+  min-height: 0;
+  border: 0;
+}
+
+.map-redesign-canvas-frame .leaflet-container {
+  background: #f3f4f6;
+}
+
+.map-redesign-canvas-frame .leaflet-tile {
+  filter: grayscale(0.95) brightness(1.08) contrast(0.88);
+  opacity: 0.82;
+}
+
+.map-redesign-canvas-frame .leaflet-control-zoom {
+  overflow: hidden;
+  border: 1px solid rgb(15 23 42 / 14%);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 16%);
+}
+
+.map-redesign-canvas-frame .leaflet-control-zoom a {
+  border: 0;
+  color: #2f3136;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.map-building-pin {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border: 2px solid white;
+  border-radius: 999px;
+  background: var(--marker-color);
+  box-shadow:
+    0 2px 4px rgb(15 23 42 / 18%),
+    0 0 0 1px rgb(15 23 42 / 8%);
+  color: white;
+}
+
+.map-building-pin svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.map-building-pin-selected {
+  width: 40px;
+  height: 40px;
+  border-width: 3px;
+  box-shadow:
+    0 8px 18px rgb(15 23 42 / 24%),
+    0 0 0 4px rgb(255 255 255 / 70%),
+    0 0 0 7px color-mix(in srgb, var(--marker-color) 26%, transparent);
+}
+
+.map-selection-card {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 420;
+  display: flex;
+  max-width: min(420px, calc(100% - 36px));
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 16px 40px rgb(15 23 42 / 16%);
+  padding: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.map-selection-card > div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.map-selection-card > div > span {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.map-selection-card strong,
+.map-selection-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-selection-card small {
+  color: var(--muted);
 }
 
 .map-coordinate-row {

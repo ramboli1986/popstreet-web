@@ -8,14 +8,18 @@ type BuildingMapProps = {
   buildings: Building[];
   selectedBuilding: Building | null;
   canEdit: boolean;
+  areaColors?: Map<string, string>;
+  resetSignal?: number;
   onSelect: (building: Building) => void;
   onCoordinateChange: (coordinate: { latitude: number; longitude: number }) => void;
 };
 
 export function BuildingMap({
+  areaColors,
   buildings,
   selectedBuilding,
   canEdit,
+  resetSignal = 0,
   onSelect,
   onCoordinateChange
 }: BuildingMapProps) {
@@ -23,6 +27,7 @@ export function BuildingMap({
   const mapRef = useRef<Leaflet.Map | null>(null);
   const markersRef = useRef<Leaflet.Marker[]>([]);
   const leafletRef = useRef<typeof Leaflet | null>(null);
+  const boundsSignatureRef = useRef("");
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
@@ -41,7 +46,8 @@ export function BuildingMap({
 
       leafletRef.current = L;
       const map = L.map(mapElementRef.current, {
-        zoomControl: true,
+        attributionControl: false,
+        zoomControl: false,
         scrollWheelZoom: true
       }).setView([40.742, -74.0], 12);
 
@@ -49,6 +55,19 @@ export function BuildingMap({
         attribution: "&copy; OpenStreetMap contributors &copy; CARTO",
         maxZoom: 19
       }).addTo(map);
+
+      L.control
+        .zoom({
+          position: "topright"
+        })
+        .addTo(map);
+
+      L.control
+        .attribution({
+          prefix: false
+        })
+        .addAttribution("© Mapbox © OpenStreetMap")
+        .addTo(map);
 
       mapRef.current = map;
       setIsReady(true);
@@ -82,15 +101,16 @@ export function BuildingMap({
 
     validBuildings.forEach((building) => {
       const isSelected = selectedBuilding?.id === building.id;
-      const markerColor = areaMarkerColor(building.area || building.neighborhoods?.name || building.city || "Other");
+      const area = buildingArea(building);
+      const markerColor = areaColors?.get(area) ?? areaMarkerColor(area);
       const marker = L.marker([building.latitude, building.longitude], {
         draggable: canEdit && isSelected,
         icon: L.divIcon({
           className: "",
-          html: `<div class="${isSelected ? "building-marker building-marker-selected" : "building-marker"}" style="--marker-color: ${markerColor};">${escapeHtml(
+          html: `<div class="${isSelected ? "map-building-pin map-building-pin-selected" : "map-building-pin"}" style="--marker-color: ${markerColor};" title="${escapeHtml(
             building.name
-          )}</div>`,
-          iconAnchor: [20, 18]
+          )}" aria-label="${escapeHtml(building.name)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V8.6L12 4l7 4.6V20h-3.2v-7.1h-3V20h-1.6v-7.1h-3V20H5Zm2.2-2.2H9v-7.1h6v7.1h1.8V9.7L12 6.6 7.2 9.7v8.1Z"/></svg></div>`,
+          iconAnchor: [16, 16]
         }),
         zIndexOffset: isSelected ? 1000 : 0
       });
@@ -107,20 +127,39 @@ export function BuildingMap({
       markersRef.current.push(marker);
     });
 
-    if (selectedBuilding) {
-      map.setView([selectedBuilding.latitude, selectedBuilding.longitude], Math.max(map.getZoom(), 14), {
-        animate: true
-      });
+    const nextSignature = validBuildings.map((building) => building.id).join(",");
+    if (validBuildings.length > 0 && nextSignature !== boundsSignatureRef.current) {
+      boundsSignatureRef.current = nextSignature;
+      const bounds = L.latLngBounds(validBuildings.map((building) => [building.latitude, building.longitude]));
+      map.fitBounds(bounds, { padding: [36, 36], maxZoom: 13 });
+    }
+  }, [areaColors, buildings, canEdit, isReady, onCoordinateChange, onSelect, selectedBuilding]);
+
+  useEffect(() => {
+    const L = leafletRef.current;
+    const map = mapRef.current;
+
+    if (!isReady || !L || !map) {
       return;
     }
 
-    if (validBuildings.length > 0) {
-      const bounds = L.latLngBounds(validBuildings.map((building) => [building.latitude, building.longitude]));
-      map.fitBounds(bounds, { padding: [48, 48], maxZoom: 14 });
+    const validBuildings = buildings.filter(
+      (building) => Number.isFinite(building.latitude) && Number.isFinite(building.longitude)
+    );
+
+    if (validBuildings.length === 0) {
+      return;
     }
-  }, [buildings, canEdit, isReady, onCoordinateChange, onSelect, selectedBuilding]);
+
+    const bounds = L.latLngBounds(validBuildings.map((building) => [building.latitude, building.longitude]));
+    map.fitBounds(bounds, { padding: [36, 36], maxZoom: 13 });
+  }, [buildings, isReady, resetSignal]);
 
   return <div className="map-canvas" ref={mapElementRef} />;
+}
+
+function buildingArea(building: Building) {
+  return building.area || building.neighborhoods?.name || building.city || "Other";
 }
 
 function escapeHtml(value: string) {

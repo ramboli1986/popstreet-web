@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   Archive,
   Check,
@@ -45,6 +45,28 @@ type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 const listingStatuses: ListingStatus[] = ["available", "pending", "unavailable", "rented", "archived"];
 const buildingPageSize = 25;
 const unitPageSize = 25;
+const preferredMapAreas = [
+  "Jersey City",
+  "LIC",
+  "Brooklyn",
+  "Downtown Manhattan",
+  "Midtown Manhattan",
+  "Upper West Side",
+  "Upper East Side",
+  "Flushing"
+];
+const mapAreaPalette = [
+  "#4da3df",
+  "#8057e8",
+  "#f2a22a",
+  "#e64f4b",
+  "#52b97e",
+  "#df519b",
+  "#5f6be8",
+  "#54b9ad",
+  "#64748b",
+  "#14b8a6"
+];
 
 export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [buildings, setBuildings] = useState<Building[]>([]);
@@ -65,6 +87,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [unitBedroomFilter, setUnitBedroomFilter] = useState<UnitBedroomFilter>("all");
   const [buildingPage, setBuildingPage] = useState(1);
   const [unitPage, setUnitPage] = useState(1);
+  const [selectedMapAreas, setSelectedMapAreas] = useState<string[]>([]);
+  const [mapResetSignal, setMapResetSignal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -234,6 +258,51 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     return Array.from(labels).sort((first, second) => first.localeCompare(second));
   }, [buildings]);
 
+  const mapAreaOptions = useMemo(() => {
+    const labels = new Set<string>();
+
+    buildings.forEach((building) => {
+      const label = buildingAreaLabel(building);
+      if (label) {
+        labels.add(label);
+      }
+    });
+
+    const sorted = Array.from(labels).sort((first, second) => {
+      const firstPreferredIndex = preferredMapAreas.indexOf(first);
+      const secondPreferredIndex = preferredMapAreas.indexOf(second);
+
+      if (firstPreferredIndex !== -1 || secondPreferredIndex !== -1) {
+        return (firstPreferredIndex === -1 ? 999 : firstPreferredIndex) - (secondPreferredIndex === -1 ? 999 : secondPreferredIndex);
+      }
+
+      return first.localeCompare(second);
+    });
+
+    return sorted.map((area, index) => ({
+      area,
+      color: areaColor(area, index)
+    }));
+  }, [buildings]);
+
+  const mapAreaColors = useMemo(
+    () => new Map(mapAreaOptions.map((option) => [option.area, option.color])),
+    [mapAreaOptions]
+  );
+
+  useEffect(() => {
+    setSelectedMapAreas((current) => {
+      const availableAreas = mapAreaOptions.map((option) => option.area);
+
+      if (availableAreas.length === 0) {
+        return [];
+      }
+
+      const stillAvailable = current.filter((area) => availableAreas.includes(area));
+      return stillAvailable.length > 0 ? stillAvailable : availableAreas;
+    });
+  }, [mapAreaOptions]);
+
   const filteredBuildings = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -260,6 +329,14 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const activeBuildingCount = useMemo(
     () => buildings.filter((building) => building.is_active).length,
     [buildings]
+  );
+  const geocodedBuildings = useMemo(
+    () => buildings.filter((building) => Number.isFinite(building.latitude) && Number.isFinite(building.longitude)),
+    [buildings]
+  );
+  const visibleMapBuildings = useMemo(
+    () => geocodedBuildings.filter((building) => selectedMapAreas.includes(buildingAreaLabel(building))),
+    [geocodedBuildings, selectedMapAreas]
   );
 
   const filteredUnits = useMemo(() => {
@@ -520,6 +597,12 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     openAddUnitDialog(building);
   }
 
+  function toggleMapArea(area: string) {
+    setSelectedMapAreas((current) =>
+      current.includes(area) ? current.filter((item) => item !== area) : [...current, area]
+    );
+  }
+
   const pageCopy = {
     building: {
       eyebrow: "Buildings",
@@ -538,6 +621,98 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     }
   }[mode];
 
+  if (mode === "map") {
+    return (
+      <>
+        {error ? <div className="message error compact-message">{error}</div> : null}
+        {message ? <div className="message compact-message">{message}</div> : null}
+
+        <section className="map-redesign-shell">
+          <header className="map-redesign-statusbar">
+            <span>
+              {visibleMapBuildings.length.toLocaleString()} of {geocodedBuildings.length.toLocaleString()} buildings geolocated
+            </span>
+            <button className="map-reset-button" onClick={() => setMapResetSignal((value) => value + 1)} type="button">
+              Reset map view
+            </button>
+          </header>
+
+          <div className="map-area-toolbar">
+            <span className="map-area-label">Areas:</span>
+            <div className="map-area-scroll">
+              {mapAreaOptions.map((option) => {
+                const isActive = selectedMapAreas.includes(option.area);
+
+                return (
+                  <button
+                    className={`map-area-chip ${isActive ? "active" : ""}`}
+                    key={option.area}
+                    onClick={() => toggleMapArea(option.area)}
+                    style={{ "--area-color": option.color } as CSSProperties}
+                    type="button"
+                  >
+                    <span />
+                    {option.area}
+                  </button>
+                );
+              })}
+            </div>
+            <button className="map-area-mini-action" onClick={() => setSelectedMapAreas(mapAreaOptions.map((option) => option.area))} type="button">
+              All
+            </button>
+            <button className="map-area-mini-action" onClick={() => setSelectedMapAreas([])} type="button">
+              None
+            </button>
+          </div>
+
+          <div className="map-redesign-canvas-frame">
+            <BuildingMap
+              areaColors={mapAreaColors}
+              buildings={visibleMapBuildings}
+              canEdit={canEdit}
+              onCoordinateChange={updateDraftCoordinate}
+              onSelect={selectBuilding}
+              resetSignal={mapResetSignal}
+              selectedBuilding={selectedBuilding}
+            />
+          </div>
+
+          {selectedBuilding ? (
+            <aside className="map-selection-card">
+              <div>
+                <span style={{ background: mapAreaColors.get(buildingAreaLabel(selectedBuilding)) }} />
+                <strong>{selectedBuilding.name}</strong>
+                <small>
+                  {buildingAreaLabel(selectedBuilding)} · {selectedBuilding.city}, {selectedBuilding.state}
+                </small>
+              </div>
+              <button className="ghost-button compact-button" onClick={() => openBuildingEditor(selectedBuilding)} type="button">
+                Edit
+              </button>
+              <button className="button compact-button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
+                Save
+              </button>
+            </aside>
+          ) : null}
+        </section>
+
+        {isBuildingEditorOpen && draft ? (
+          <BuildingEditorDialog
+            canEdit={canEdit}
+            draft={draft}
+            isSaving={isSaving}
+            neighborhoods={neighborhoods}
+            onArchive={() => setBuildingActive(draft, false)}
+            onClose={() => setIsBuildingEditorOpen(false)}
+            onRestore={() => setBuildingActive(draft, true)}
+            onSave={saveBuilding}
+            updateDraft={updateDraft}
+          />
+        ) : null}
+      </>
+    );
+  }
+
   return (
     <>
       <div className="page-hero manager-hero">
@@ -551,12 +726,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             <RefreshCcw size={16} />
             Refresh
           </button>
-          {mode === "map" && draft ? (
-            <button className="button dark-button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
-              <Save size={16} />
-              Save location
-            </button>
-          ) : null}
           {canEdit && mode === "building" ? (
             <button className="button dark-button" onClick={createBuildingDraft} type="button">
               <Plus size={16} />
@@ -570,7 +739,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       {message ? <div className="message compact-message">{message}</div> : null}
       {!canEdit ? <div className="message compact-message">Viewer role is read-only.</div> : null}
 
-      {mode === "map" ? null : mode === "units" ? (
+      {mode === "units" ? (
         <section className="ops-toolbar unit-ops-toolbar">
           <label className="search-box">
             <Search size={16} />
@@ -652,17 +821,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         </section>
       )}
 
-      {mode === "map" ? (
-        <section className="map-workspace-panel">
-          <BuildingMap
-            buildings={buildings}
-            canEdit={canEdit}
-            onCoordinateChange={updateDraftCoordinate}
-            onSelect={selectBuilding}
-            selectedBuilding={selectedBuilding}
-          />
-        </section>
-      ) : mode === "units" ? (
+      {mode === "units" ? (
         <UnitManager
           buildingsByID={buildingByID}
           canEdit={canEdit}
@@ -1679,6 +1838,20 @@ function EmptyState({ title, body }: { title: string; body: string }) {
       <p>{body}</p>
     </div>
   );
+}
+
+function buildingAreaLabel(building: Building) {
+  return building.area || building.neighborhoods?.name || building.city || "Other";
+}
+
+function areaColor(area: string, fallbackIndex: number) {
+  const preferredIndex = preferredMapAreas.indexOf(area);
+
+  if (preferredIndex !== -1) {
+    return mapAreaPalette[preferredIndex % mapAreaPalette.length];
+  }
+
+  return mapAreaPalette[fallbackIndex % mapAreaPalette.length];
 }
 
 type PaginationMeta = {

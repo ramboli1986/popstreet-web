@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1280" />
+<title>PopStreet · Dashboard — UI Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
+      colors: {
+        brand: {
+          50: '#fff7ed', 100: '#ffedd5', 200: '#fed7aa', 500: '#f97316', 600: '#ea580c', 700: '#c2410c'
+        },
+        ink: { 900: '#0f172a', 700: '#334155', 500: '#64748b', 400: '#94a3b8' },
+      },
+      boxShadow: {
+        card: '0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.03)',
+        pop: '0 12px 32px -8px rgba(15,23,42,0.12)',
+      },
+      borderRadius: { xl2: '14px' }
+    }
+  }
+}
+</script>
+<style>
+  html, body { background: #f8fafc; color: #0f172a; font-family: Inter, ui-sans-serif, system-ui; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  .leaflet-container { background: #f1f5f9; font-family: inherit; border-radius: 12px; }
+  .leaflet-tile { filter: grayscale(0.4) brightness(1.02); }
+  /* nav hover */
+  .nav-item { transition: background .12s, color .12s; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="flex min-h-screen">
+  <!-- ============ Sidebar (light) ============ -->
+  <aside class="w-[232px] shrink-0 border-r border-slate-200 bg-white flex flex-col">
+    <div class="h-14 flex items-center gap-2.5 px-5 border-b border-slate-200">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 grid place-items-center text-white font-bold">P</div>
+      <div>
+        <div class="text-[13px] font-bold tracking-tight">PopStreet</div>
+        <div class="text-[10px] text-ink-500 uppercase tracking-wider font-semibold">Admin Console</div>
+      </div>
+    </div>
+
+    <nav class="px-3 py-4 flex-1 text-sm">
+      <div class="px-2 text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">Workspace</div>
+      <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg bg-brand-50 text-brand-700 font-semibold">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Overview
+        <span class="ml-auto text-[10px] bg-brand-100 text-brand-700 px-1.5 py-0.5 rounded">live</span>
+      </a>
+      <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5">
+        <i data-lucide="building-2" class="w-4 h-4"></i> Buildings
+        <span class="ml-auto text-[11px] text-ink-400 tnum">418</span>
+      </a>
+      <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5">
+        <i data-lucide="door-open" class="w-4 h-4"></i> Units &amp; Deals
+        <span class="ml-auto text-[11px] text-ink-400 tnum">2,184</span>
+      </a>
+      <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5">
+        <i data-lucide="map-pinned" class="w-4 h-4"></i> Map
+      </a>
+      <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5">
+        <i data-lucide="radio-tower" class="w-4 h-4"></i> Data Sources
+        <span class="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+      </a>
+
+      <div class="px-2 mt-6 text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">Admin</div>
+      <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100">
+        <i data-lucide="users-round" class="w-4 h-4"></i> Accounts
+      </a>
+      <a class="nav-item flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5">
+        <i data-lucide="settings" class="w-4 h-4"></i> Settings
+      </a>
+    </nav>
+
+    <div class="border-t border-slate-200 p-3">
+      <div class="rounded-xl bg-slate-50 border border-slate-200 p-3">
+        <div class="flex items-center gap-2 text-[11px] text-ink-500">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+          Scrapers healthy
+        </div>
+        <div class="text-[11px] text-ink-400 mt-1">last run · 6 min ago</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ Main column ============ -->
+  <div class="flex-1 min-w-0 flex flex-col">
+
+    <!-- Topbar -->
+    <header class="h-14 border-b border-slate-200 bg-white px-6 flex items-center gap-4 sticky top-0 z-20">
+      <div class="flex items-center gap-2 text-[13px] text-ink-500">
+        <span>Workspace</span>
+        <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+        <span class="text-ink-900 font-semibold">Overview</span>
+      </div>
+
+      <div class="ml-auto flex items-center gap-2">
+        <div class="flex items-center gap-2 px-3 h-9 rounded-lg border border-slate-200 bg-slate-50 text-[13px] text-ink-500 w-[280px]">
+          <i data-lucide="search" class="w-4 h-4"></i>
+          <span>Search buildings, units, addresses…</span>
+          <span class="ml-auto mono text-[10px] text-ink-400 border border-slate-200 rounded px-1.5 py-0.5 bg-white">⌘K</span>
+        </div>
+        <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">prod</span>
+        <button class="w-9 h-9 grid place-items-center rounded-lg border border-slate-200 bg-white text-ink-700 hover:bg-slate-50">
+          <i data-lucide="bell" class="w-4 h-4"></i>
+        </button>
+        <div class="flex items-center gap-2 pl-2 ml-1 border-l border-slate-200">
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 grid place-items-center text-white text-xs font-bold">BO</div>
+          <div class="text-[12px] leading-tight">
+            <div class="font-semibold">Bo Li</div>
+            <div class="text-ink-500 text-[10.5px] flex items-center gap-1"><i data-lucide="shield-check" class="w-3 h-3 text-brand-600"></i> Super admin</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="p-6 space-y-6">
+
+      <!-- Page header -->
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-ink-500 font-bold">Overview</div>
+          <h1 class="text-[26px] font-bold mt-1 leading-tight">Today's market pulse</h1>
+          <div class="text-[13px] text-ink-500 mt-1">418 buildings tracked · last scrape <span class="text-ink-900 font-semibold">6 min ago</span></div>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-[12px] font-semibold">
+            <button class="px-3 h-8 rounded-md bg-slate-900 text-white">Today</button>
+            <button class="px-3 h-8 rounded-md text-ink-700">7d</button>
+            <button class="px-3 h-8 rounded-md text-ink-700">30d</button>
+            <button class="px-3 h-8 rounded-md text-ink-700">90d</button>
+          </div>
+          <button class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700 hover:bg-slate-50">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
+          </button>
+          <button class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-slate-900 text-white text-[13px] font-semibold hover:bg-slate-800">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- KPI strip -->
+      <section class="grid grid-cols-5 gap-4">
+        <!-- card template -->
+        <div class="bg-white border border-slate-200 rounded-xl2 p-4 shadow-card">
+          <div class="flex items-center justify-between text-[12px] text-ink-500 font-semibold">
+            <span>Active buildings</span>
+            <i data-lucide="building-2" class="w-4 h-4 text-ink-400"></i>
+          </div>
+          <div class="mt-3 text-[28px] font-bold tnum tracking-tight">392<span class="text-[14px] text-ink-400 font-medium ml-1">/ 418</span></div>
+          <div class="text-[11.5px] text-ink-500 mt-1 flex items-center gap-1">
+            <span class="text-emerald-600 font-semibold flex items-center gap-0.5"><i data-lucide="arrow-up" class="w-3 h-3"></i>2</span>
+            vs yesterday
+          </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-xl2 p-4 shadow-card">
+          <div class="flex items-center justify-between text-[12px] text-ink-500 font-semibold">
+            <span>Active deals</span>
+            <i data-lucide="tag" class="w-4 h-4 text-ink-400"></i>
+          </div>
+          <div class="mt-3 text-[28px] font-bold tnum tracking-tight">1,287</div>
+          <div class="text-[11.5px] text-ink-500 mt-1 flex items-center gap-1">
+            <span class="text-emerald-600 font-semibold flex items-center gap-0.5"><i data-lucide="arrow-up" class="w-3 h-3"></i>4.2%</span>
+            vs 7d avg
+          </div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-xl2 p-4 shadow-card">
+          <div class="flex items-center justify-between text-[12px] text-ink-500 font-semibold">
+            <span>New today</span>
+            <i data-lucide="sparkles" class="w-4 h-4 text-brand-600"></i>
+          </div>
+          <div class="mt-3 text-[28px] font-bold tnum tracking-tight text-brand-700">+84</div>
+          <div class="text-[11.5px] text-ink-500 mt-1">across 41 buildings</div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-xl2 p-4 shadow-card">
+          <div class="flex items-center justify-between text-[12px] text-ink-500 font-semibold">
+            <span>Off-market today</span>
+            <i data-lucide="circle-slash" class="w-4 h-4 text-ink-400"></i>
+          </div>
+          <div class="mt-3 text-[28px] font-bold tnum tracking-tight text-rose-600">−62</div>
+          <div class="text-[11.5px] text-ink-500 mt-1">net +22 supply</div>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-xl2 p-4 shadow-card">
+          <div class="flex items-center justify-between text-[12px] text-ink-500 font-semibold">
+            <span>Median net rent</span>
+            <i data-lucide="dollar-sign" class="w-4 h-4 text-ink-400"></i>
+          </div>
+          <div class="mt-3 text-[28px] font-bold tnum tracking-tight">$3,420</div>
+          <div class="text-[11.5px] text-ink-500 mt-1 flex items-center gap-1">
+            <span class="text-emerald-600 font-semibold flex items-center gap-0.5"><i data-lucide="arrow-down" class="w-3 h-3"></i>$45</span>
+            vs last week
+          </div>
+        </div>
+      </section>
+
+      <!-- Row: Trend + Top Deals -->
+      <section class="grid grid-cols-3 gap-4">
+        <!-- Trend -->
+        <div class="col-span-2 bg-white border border-slate-200 rounded-xl2 shadow-card">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div>
+              <div class="text-[11px] uppercase tracking-wider text-ink-500 font-bold">Daily activity</div>
+              <div class="text-[15px] font-bold mt-0.5">New listings vs went unavailable · last 30 days</div>
+            </div>
+            <div class="flex items-center gap-3 text-[12px]">
+              <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-orange-500"></span>New</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-sm bg-slate-400"></span>Unavailable</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-3 h-0.5 bg-slate-900"></span>Active total</span>
+            </div>
+          </div>
+          <div class="p-4 h-[280px]">
+            <canvas id="trendChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Top Deals -->
+        <div class="bg-white border border-slate-200 rounded-xl2 shadow-card flex flex-col">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div>
+              <div class="text-[11px] uppercase tracking-wider text-ink-500 font-bold">Hot</div>
+              <div class="text-[15px] font-bold mt-0.5">Top deals right now</div>
+            </div>
+            <button class="text-[12px] font-semibold text-brand-700 hover:underline">View all →</button>
+          </div>
+          <div class="px-2 py-2 flex-1 overflow-y-auto scrollbar-thin">
+            <!-- deal row -->
+            <a class="block px-3 py-2.5 rounded-lg hover:bg-slate-50">
+              <div class="flex items-center gap-2">
+                <span class="mono text-[10px] tnum text-ink-400 w-4">1</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[13px] font-semibold truncate">The Greene · #18B</div>
+                  <div class="text-[11px] text-ink-500 truncate">Long Island City · 2BR / 2BA</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[13px] font-bold tnum">$3,180</div>
+                  <div class="text-[10px] tnum text-ink-400 line-through">$4,200</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 mt-1.5 pl-6 flex-wrap">
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 font-bold">−24%</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-semibold">+2 mo free</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold">$1,500 back</span>
+              </div>
+            </a>
+            <a class="block px-3 py-2.5 rounded-lg hover:bg-slate-50">
+              <div class="flex items-center gap-2">
+                <span class="mono text-[10px] tnum text-ink-400 w-4">2</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[13px] font-semibold truncate">Hudson Yards 35 · #2204</div>
+                  <div class="text-[11px] text-ink-500 truncate">Manhattan · Studio</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[13px] font-bold tnum">$2,940</div>
+                  <div class="text-[10px] tnum text-ink-400 line-through">$3,700</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 mt-1.5 pl-6 flex-wrap">
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 font-bold">−20%</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-semibold">+1.5 mo free</span>
+              </div>
+            </a>
+            <a class="block px-3 py-2.5 rounded-lg hover:bg-slate-50">
+              <div class="flex items-center gap-2">
+                <span class="mono text-[10px] tnum text-ink-400 w-4">3</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[13px] font-semibold truncate">Journal Squared · #1612</div>
+                  <div class="text-[11px] text-ink-500 truncate">Jersey City · 1BR / 1BA</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[13px] font-bold tnum">$2,490</div>
+                  <div class="text-[10px] tnum text-ink-400 line-through">$3,050</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 mt-1.5 pl-6 flex-wrap">
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 font-bold">−18%</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold">$2,000 back</span>
+              </div>
+            </a>
+            <a class="block px-3 py-2.5 rounded-lg hover:bg-slate-50">
+              <div class="flex items-center gap-2">
+                <span class="mono text-[10px] tnum text-ink-400 w-4">4</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[13px] font-semibold truncate">Sven LIC · #4810</div>
+                  <div class="text-[11px] text-ink-500 truncate">Long Island City · 1BR</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[13px] font-bold tnum">$3,275</div>
+                  <div class="text-[10px] tnum text-ink-400 line-through">$3,950</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 mt-1.5 pl-6 flex-wrap">
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 font-bold">−17%</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-semibold">+2 mo free</span>
+              </div>
+            </a>
+            <a class="block px-3 py-2.5 rounded-lg hover:bg-slate-50">
+              <div class="flex items-center gap-2">
+                <span class="mono text-[10px] tnum text-ink-400 w-4">5</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[13px] font-semibold truncate">The Easton · #905</div>
+                  <div class="text-[11px] text-ink-500 truncate">Hoboken · 2BR / 2BA</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[13px] font-bold tnum">$3,650</div>
+                  <div class="text-[10px] tnum text-ink-400 line-through">$4,400</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 mt-1.5 pl-6 flex-wrap">
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 font-bold">−17%</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-semibold">$1,000 back</span>
+              </div>
+            </a>
+            <a class="block px-3 py-2.5 rounded-lg hover:bg-slate-50">
+              <div class="flex items-center gap-2">
+                <span class="mono text-[10px] tnum text-ink-400 w-4">6</span>
+                <div class="flex-1 min-w-0">
+                  <div class="text-[13px] font-semibold truncate">VYV · #1108</div>
+                  <div class="text-[11px] text-ink-500 truncate">Jersey City · Studio</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-[13px] font-bold tnum">$2,310</div>
+                  <div class="text-[10px] tnum text-ink-400 line-through">$2,780</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-1.5 mt-1.5 pl-6 flex-wrap">
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 font-bold">−17%</span>
+                <span class="text-[10px] px-1.5 py-0.5 rounded bg-sky-50 text-sky-700 font-semibold">+1 mo free</span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Row: Map heatmap + Neighborhoods -->
+      <section class="grid grid-cols-3 gap-4">
+        <!-- Map -->
+        <div class="col-span-2 bg-white border border-slate-200 rounded-xl2 shadow-card overflow-hidden">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div>
+              <div class="text-[11px] uppercase tracking-wider text-ink-500 font-bold">Geo distribution</div>
+              <div class="text-[15px] font-bold mt-0.5">Active deals · NY &amp; NJ</div>
+            </div>
+            <div class="flex items-center gap-2 text-[12px]">
+              <span class="text-ink-500">Bubble = deal count · color = avg free months</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-orange-200"></span>1mo</span>
+              <span class="inline-flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-orange-500"></span>2mo+</span>
+            </div>
+          </div>
+          <div id="map" class="h-[340px]"></div>
+        </div>
+
+        <!-- Neighborhood breakdown -->
+        <div class="bg-white border border-slate-200 rounded-xl2 shadow-card">
+          <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div>
+              <div class="text-[11px] uppercase tracking-wider text-ink-500 font-bold">Where the deals are</div>
+              <div class="text-[15px] font-bold mt-0.5">Top neighborhoods</div>
+            </div>
+            <button class="text-[12px] font-semibold text-brand-700 hover:underline">View all →</button>
+          </div>
+          <div class="p-4 space-y-3">
+            <!-- bar row -->
+            <div>
+              <div class="flex items-center justify-between text-[12px]">
+                <span class="font-semibold">Long Island City</span>
+                <span class="text-ink-500 tnum">214 deals · avg −16%</span>
+              </div>
+              <div class="mt-1.5 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full bg-brand-500" style="width:92%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-[12px]">
+                <span class="font-semibold">Jersey City Downtown</span>
+                <span class="text-ink-500 tnum">183 deals · avg −14%</span>
+              </div>
+              <div class="mt-1.5 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full bg-brand-500" style="width:80%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-[12px]">
+                <span class="font-semibold">Hudson Yards</span>
+                <span class="text-ink-500 tnum">147 deals · avg −12%</span>
+              </div>
+              <div class="mt-1.5 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full bg-brand-500" style="width:64%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-[12px]">
+                <span class="font-semibold">Hoboken</span>
+                <span class="text-ink-500 tnum">128 deals · avg −13%</span>
+              </div>
+              <div class="mt-1.5 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full bg-brand-500" style="width:56%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-[12px]">
+                <span class="font-semibold">Williamsburg</span>
+                <span class="text-ink-500 tnum">102 deals · avg −11%</span>
+              </div>
+              <div class="mt-1.5 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full bg-brand-500" style="width:44%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-[12px]">
+                <span class="font-semibold">Financial District</span>
+                <span class="text-ink-500 tnum">89 deals · avg −10%</span>
+              </div>
+              <div class="mt-1.5 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full bg-brand-500" style="width:38%"></div>
+              </div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between text-[12px]">
+                <span class="font-semibold">Astoria</span>
+                <span class="text-ink-500 tnum">74 deals · avg −9%</span>
+              </div>
+              <div class="mt-1.5 h-2.5 rounded-full bg-slate-100 overflow-hidden">
+                <div class="h-full bg-brand-500" style="width:32%"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Footer hint -->
+      <div class="text-[11px] text-ink-400 pt-2 pb-6">
+        Mockup · for visual review only. Data shown is sample. The chart, map, and bars will pull from Supabase aggregations once the design is approved.
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+  lucide.createIcons();
+
+  // ===== Trend chart =====
+  (function(){
+    const ctx = document.getElementById('trendChart');
+    const days = 30;
+    const labels = Array.from({length: days}, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    });
+    // synthetic but realistic data
+    const newL = [62,71,55,80,76,68,90,84,72,79,88,95,72,66,81,77,93,85,71,68,82,90,86,79,74,80,88,92,78,84];
+    const offL = [48,52,49,61,58,55,72,68,60,64,70,75,58,52,66,62,74,69,57,55,66,72,68,63,60,64,70,72,62,68];
+    const active = [];
+    let cur = 1180;
+    for (let i = 0; i < days; i++) { cur += newL[i] - offL[i]; active.push(cur); }
+
+    new Chart(ctx, {
+      data: {
+        labels,
+        datasets: [
+          { type: 'bar', label: 'New', data: newL, backgroundColor: '#f97316', borderRadius: 4, barPercentage: .7, categoryPercentage: .7, order: 2 },
+          { type: 'bar', label: 'Unavailable', data: offL.map(v => -v), backgroundColor: '#94a3b8', borderRadius: 4, barPercentage: .7, categoryPercentage: .7, order: 3 },
+          { type: 'line', label: 'Active total', data: active, yAxisID: 'y1', borderColor: '#0f172a', borderWidth: 2, pointRadius: 0, tension: .35, order: 1 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0f172a', padding: 10, cornerRadius: 8 } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 }, maxRotation: 0, autoSkipPadding: 16 } },
+          y: { stacked: true, grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+          y1: { position: 'right', grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10 } } }
+        }
+      }
+    });
+  })();
+
+  // ===== Leaflet map =====
+  (function(){
+    const map = L.map('map', { zoomControl: true, attributionControl: false }).setView([40.745, -73.99], 11);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 19 }).addTo(map);
+
+    const points = [
+      // [lat, lng, deals, avgFreeMo, label]
+      [40.7440, -73.9489, 214, 2.1, 'Long Island City'],
+      [40.7178, -74.0431, 183, 1.7, 'Jersey City Downtown'],
+      [40.7540, -74.0010, 147, 1.4, 'Hudson Yards'],
+      [40.7440, -74.0324, 128, 1.6, 'Hoboken'],
+      [40.7081, -73.9571, 102, 1.2, 'Williamsburg'],
+      [40.7075, -74.0090, 89, 1.1, 'Financial District'],
+      [40.7644, -73.9235, 74, 1.0, 'Astoria'],
+      [40.7128, -73.9890, 64, 1.5, 'Lower East Side'],
+      [40.6892, -73.9442, 58, 1.3, 'Bed-Stuy'],
+    ];
+
+    points.forEach(p => {
+      const radius = 8 + Math.sqrt(p[2]) * 1.3;
+      const color = p[3] >= 1.8 ? '#ea580c' : p[3] >= 1.3 ? '#fb923c' : '#fed7aa';
+      L.circleMarker([p[0], p[1]], {
+        radius, color: '#c2410c', weight: 1, fillColor: color, fillOpacity: .7
+      }).bindTooltip(`<b>${p[4]}</b><br>${p[2]} active deals · avg ${p[3]} mo free`, { direction: 'top' }).addTo(map);
+    });
+  })();
+</script>
+</body>
+</html>

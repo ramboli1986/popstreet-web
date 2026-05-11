@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1280" />
+<title>PopStreet · Units &amp; Deals — UI Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
+      colors: {
+        brand: { 50: '#fff7ed', 100: '#ffedd5', 200: '#fed7aa', 500: '#f97316', 600: '#ea580c', 700: '#c2410c' },
+        ink: { 900: '#0f172a', 700: '#334155', 500: '#64748b', 400: '#94a3b8' },
+      },
+      boxShadow: { card: '0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.03)' },
+      borderRadius: { xl2: '14px' }
+    }
+  }
+}
+</script>
+<style>
+  html, body { background: #f8fafc; color: #0f172a; font-family: Inter, ui-sans-serif, system-ui; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  .row-selected { background: #fff7ed !important; box-shadow: inset 3px 0 0 #f97316; }
+  .chip { display:inline-flex; align-items:center; gap: 4px; font-size: 10.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+  /* status dots */
+  .dot { width:6px; height:6px; border-radius:50%; display:inline-block; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="flex min-h-screen">
+  <!-- Sidebar -->
+  <aside class="w-[232px] shrink-0 border-r border-slate-200 bg-white flex flex-col">
+    <div class="h-14 flex items-center gap-2.5 px-5 border-b border-slate-200">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 grid place-items-center text-white font-bold">P</div>
+      <div>
+        <div class="text-[13px] font-bold tracking-tight">PopStreet</div>
+        <div class="text-[10px] text-ink-500 uppercase tracking-wider font-semibold">Admin Console</div>
+      </div>
+    </div>
+    <nav class="px-3 py-4 flex-1 text-sm">
+      <div class="px-2 text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">Workspace</div>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100"><i data-lucide="layout-dashboard" class="w-4 h-4"></i> Overview</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5"><i data-lucide="building-2" class="w-4 h-4"></i> Buildings <span class="ml-auto text-[11px] text-ink-400 tnum">418</span></a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-brand-50 text-brand-700 font-semibold mt-0.5">
+        <i data-lucide="door-open" class="w-4 h-4"></i> Units &amp; Deals
+        <span class="ml-auto text-[11px] text-brand-700 tnum font-bold">2,184</span>
+      </a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5"><i data-lucide="map-pinned" class="w-4 h-4"></i> Map</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5"><i data-lucide="radio-tower" class="w-4 h-4"></i> Data Sources <span class="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-500"></span></a>
+      <div class="px-2 mt-6 text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">Admin</div>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100"><i data-lucide="users-round" class="w-4 h-4"></i> Accounts</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5"><i data-lucide="settings" class="w-4 h-4"></i> Settings</a>
+    </nav>
+  </aside>
+
+  <div class="flex-1 min-w-0 flex flex-col">
+    <!-- Topbar -->
+    <header class="h-14 border-b border-slate-200 bg-white px-6 flex items-center gap-4 sticky top-0 z-20">
+      <div class="flex items-center gap-2 text-[13px] text-ink-500">
+        <span>Workspace</span>
+        <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+        <span class="text-ink-900 font-semibold">Units &amp; Deals</span>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <div class="flex items-center gap-2 px-3 h-9 rounded-lg border border-slate-200 bg-slate-50 text-[13px] text-ink-500 w-[280px]">
+          <i data-lucide="search" class="w-4 h-4"></i>
+          <span>Search buildings, units, addresses…</span>
+          <span class="ml-auto mono text-[10px] text-ink-400 border border-slate-200 rounded px-1.5 py-0.5 bg-white">⌘K</span>
+        </div>
+        <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">prod</span>
+        <div class="flex items-center gap-2 pl-2 ml-1 border-l border-slate-200">
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 grid place-items-center text-white text-xs font-bold">BO</div>
+          <div class="text-[12px] leading-tight">
+            <div class="font-semibold">Bo Li</div>
+            <div class="text-ink-500 text-[10.5px] flex items-center gap-1"><i data-lucide="shield-check" class="w-3 h-3 text-brand-600"></i> Super admin</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="p-6 flex flex-col gap-4 min-h-0 flex-1">
+
+      <!-- Header -->
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-ink-500 font-bold">Daily deals</div>
+          <h1 class="text-[24px] font-bold mt-1 leading-tight">Units &amp; Deals</h1>
+          <div class="text-[13px] text-ink-500 mt-1">Updated every scrape · last refresh 6 min ago</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700 hover:bg-slate-50">
+            <i data-lucide="columns-3" class="w-3.5 h-3.5"></i> Columns
+          </button>
+          <button class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700 hover:bg-slate-50">
+            <i data-lucide="bookmark" class="w-3.5 h-3.5"></i> Saved views
+          </button>
+          <button class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-slate-900 text-white text-[13px] font-semibold hover:bg-slate-800">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Inline stats -->
+      <div class="grid grid-cols-4 gap-3">
+        <div class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 shadow-card">
+          <div class="w-9 h-9 rounded-lg bg-brand-50 text-brand-700 grid place-items-center"><i data-lucide="tag" class="w-4 h-4"></i></div>
+          <div>
+            <div class="text-[20px] font-bold tnum leading-none">1,287</div>
+            <div class="text-[11px] text-ink-500 mt-1">Available now</div>
+          </div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 shadow-card">
+          <div class="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 grid place-items-center"><i data-lucide="sparkles" class="w-4 h-4"></i></div>
+          <div>
+            <div class="text-[20px] font-bold tnum leading-none text-emerald-700">+84</div>
+            <div class="text-[11px] text-ink-500 mt-1">New today</div>
+          </div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 shadow-card">
+          <div class="w-9 h-9 rounded-lg bg-rose-50 text-rose-700 grid place-items-center"><i data-lucide="circle-slash" class="w-4 h-4"></i></div>
+          <div>
+            <div class="text-[20px] font-bold tnum leading-none text-rose-600">−62</div>
+            <div class="text-[11px] text-ink-500 mt-1">Off-market today</div>
+          </div>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-xl p-3 flex items-center gap-3 shadow-card">
+          <div class="w-9 h-9 rounded-lg bg-amber-50 text-amber-700 grid place-items-center"><i data-lucide="alert-triangle" class="w-4 h-4"></i></div>
+          <div>
+            <div class="text-[20px] font-bold tnum leading-none">17</div>
+            <div class="text-[11px] text-ink-500 mt-1">Stale (&gt; 3d unseen)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div class="bg-white border border-slate-200 rounded-xl2 shadow-card p-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex items-center gap-2 h-9 px-3 rounded-lg border border-slate-200 bg-slate-50 flex-1 min-w-[220px] max-w-[320px]">
+            <i data-lucide="search" class="w-4 h-4 text-ink-400"></i>
+            <input class="bg-transparent outline-none text-[13px] flex-1" placeholder="Unit #, building, neighborhood..." />
+          </div>
+          <select class="h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700">
+            <option>All buildings</option><option>The Greene</option>
+          </select>
+          <select class="h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700">
+            <option>Bedrooms: any</option><option>Studio</option><option>1BR</option><option>2BR</option><option>3+BR</option>
+          </select>
+          <div class="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-[12px] font-semibold">
+            <button class="px-3 h-8 rounded-md bg-slate-900 text-white">All</button>
+            <button class="px-3 h-8 rounded-md text-ink-700">Available</button>
+            <button class="px-3 h-8 rounded-md text-ink-700">Pending</button>
+            <button class="px-3 h-8 rounded-md text-ink-700">Unavail</button>
+          </div>
+          <div class="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 text-[12px] font-semibold">
+            <button class="px-3 h-8 rounded-md bg-slate-900 text-white">Today</button>
+            <button class="px-3 h-8 rounded-md text-ink-700">7d</button>
+            <button class="px-3 h-8 rounded-md text-ink-700">30d</button>
+            <button class="px-3 h-8 rounded-md text-ink-700">All</button>
+          </div>
+          <label class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold text-ink-700 cursor-pointer">
+            <input type="checkbox" class="accent-brand-600" checked /> Has free months
+          </label>
+          <label class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold text-ink-700 cursor-pointer">
+            <input type="checkbox" class="accent-brand-600" /> Has cash back
+          </label>
+          <button class="inline-flex items-center gap-1 h-9 px-3 rounded-lg border border-dashed border-slate-300 bg-white text-[12px] font-semibold text-ink-500 hover:bg-slate-50">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add filter
+          </button>
+          <button class="ml-auto text-[12px] font-semibold text-ink-500 hover:text-ink-900">Clear</button>
+        </div>
+      </div>
+
+      <!-- Two-column: table + drawer -->
+      <div class="grid grid-cols-[1.6fr_1fr] gap-4 min-h-0 flex-1">
+
+        <!-- Units table -->
+        <div class="bg-white border border-slate-200 rounded-xl2 shadow-card flex flex-col overflow-hidden min-h-0">
+          <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+            <div class="text-[12px] text-ink-500"><b class="text-ink-900 tnum">1,287</b> units · sorted by <span class="font-semibold text-ink-700">Listed (newest)</span> <i data-lucide="chevron-down" class="w-3 h-3 inline"></i></div>
+            <div class="flex items-center gap-1">
+              <button class="text-[12px] h-8 px-2 rounded-md hover:bg-slate-100 text-ink-700 inline-flex items-center gap-1"><i data-lucide="check-square" class="w-3.5 h-3.5"></i> 0 selected</button>
+            </div>
+          </div>
+          <div class="overflow-auto scrollbar-thin">
+            <table class="w-full text-[13px]">
+              <thead class="bg-slate-50 text-ink-500 text-[10.5px] uppercase tracking-wider font-bold sticky top-0">
+                <tr>
+                  <th class="text-left pl-4 pr-2 py-2.5"><input type="checkbox" class="accent-brand-600" /></th>
+                  <th class="text-left px-2 py-2.5">Unit</th>
+                  <th class="text-left px-2 py-2.5">Status</th>
+                  <th class="text-left px-2 py-2.5">Deal</th>
+                  <th class="text-right px-2 py-2.5">Market → Net</th>
+                  <th class="text-left px-2 py-2.5">Listed</th>
+                  <th class="text-left px-2 py-2.5">Last seen</th>
+                  <th class="text-left px-2 py-2.5">Source</th>
+                  <th class="px-2"></th>
+                </tr>
+              </thead>
+              <tbody id="rows" class="divide-y divide-slate-100"></tbody>
+            </table>
+          </div>
+          <!-- Footer / pagination -->
+          <div class="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 text-[12px] text-ink-500">
+            <span>Showing 1–25 of 1,287</span>
+            <div class="flex items-center gap-1">
+              <button class="h-7 w-7 grid place-items-center rounded-md border border-slate-200 text-ink-500 hover:bg-slate-50"><i data-lucide="chevron-left" class="w-3.5 h-3.5"></i></button>
+              <button class="h-7 px-2 rounded-md bg-slate-900 text-white font-semibold tnum">1</button>
+              <button class="h-7 w-7 grid place-items-center rounded-md hover:bg-slate-50 tnum">2</button>
+              <button class="h-7 w-7 grid place-items-center rounded-md hover:bg-slate-50 tnum">3</button>
+              <span class="px-1">…</span>
+              <button class="h-7 w-9 grid place-items-center rounded-md hover:bg-slate-50 tnum">52</button>
+              <button class="h-7 w-7 grid place-items-center rounded-md border border-slate-200 text-ink-700 hover:bg-slate-50"><i data-lucide="chevron-right" class="w-3.5 h-3.5"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Unit detail drawer -->
+        <aside class="bg-white border border-slate-200 rounded-xl2 shadow-card flex flex-col overflow-hidden min-h-0">
+          <div class="p-4 border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <div class="text-[11px] uppercase tracking-wider text-ink-500 font-bold">Selected unit</div>
+                <h2 class="text-[17px] font-bold mt-1 truncate">The Greene · #18B</h2>
+                <div class="text-[12px] text-ink-500">Long Island City · 2BR / 2BA · 1,040 sqft · floor 18</div>
+              </div>
+              <div class="flex items-center gap-1">
+                <button class="w-8 h-8 grid place-items-center rounded-lg border border-slate-200 bg-white text-ink-700 hover:bg-slate-50"><i data-lucide="external-link" class="w-4 h-4"></i></button>
+                <button class="w-8 h-8 grid place-items-center rounded-lg border border-slate-200 bg-white text-ink-700 hover:bg-slate-50"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                <button class="w-8 h-8 grid place-items-center rounded-lg border border-slate-200 bg-white text-ink-700 hover:bg-slate-50"><i data-lucide="x" class="w-4 h-4"></i></button>
+              </div>
+            </div>
+            <div class="mt-3 flex items-center gap-1.5 flex-wrap">
+              <span class="chip bg-emerald-50 text-emerald-700 px-2 py-1"><span class="dot bg-emerald-500"></span> Available</span>
+              <span class="chip bg-brand-50 text-brand-700">−24%</span>
+              <span class="chip bg-sky-50 text-sky-700">+2 mo free</span>
+              <span class="chip bg-amber-50 text-amber-700">$1,500 cash back</span>
+            </div>
+          </div>
+
+          <div class="p-4 grid grid-cols-2 gap-3">
+            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+              <div class="text-[11px] text-ink-500 font-semibold">Market</div>
+              <div class="text-[18px] font-bold tnum text-ink-500 line-through mt-1">$4,200</div>
+            </div>
+            <div class="rounded-xl border border-brand-200 bg-brand-50 p-3">
+              <div class="text-[11px] text-brand-700 font-semibold">Net rent</div>
+              <div class="text-[18px] font-bold tnum text-brand-700 mt-1">$3,180</div>
+            </div>
+          </div>
+
+          <div class="px-4">
+            <div class="text-[11px] uppercase tracking-wider text-ink-500 font-bold mb-2">Price history · 60 days</div>
+            <div class="h-[130px]"><canvas id="historyChart"></canvas></div>
+          </div>
+
+          <div class="p-4 mt-2 border-t border-slate-100 grid grid-cols-2 gap-x-4 gap-y-2 text-[12.5px]">
+            <div class="text-ink-500">Listed</div><div class="font-semibold">May 7 · 3 days ago</div>
+            <div class="text-ink-500">Last seen</div><div class="font-semibold flex items-center gap-1"><span class="dot bg-emerald-500"></span> 6 min ago</div>
+            <div class="text-ink-500">Available from</div><div class="font-semibold">Jun 1, 2026</div>
+            <div class="text-ink-500">Source</div><div class="font-semibold">StreetEasy · #4892013</div>
+            <div class="text-ink-500">Lease deal</div><div class="font-semibold">2 months free on 14mo lease</div>
+          </div>
+
+          <div class="mt-auto p-3 border-t border-slate-100 flex items-center gap-2">
+            <button class="flex-1 h-9 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700 hover:bg-slate-50">Mark unavailable</button>
+            <button class="flex-1 h-9 rounded-lg bg-brand-600 text-white text-[13px] font-semibold hover:bg-brand-700 inline-flex items-center justify-center gap-1.5">
+              <i data-lucide="save" class="w-3.5 h-3.5"></i> Save changes
+            </button>
+          </div>
+        </aside>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+  lucide.createIcons();
+
+  // ===== Rows data =====
+  const rows = [
+    { sel: true, b: 'The Greene', u: '#18B', area: 'Long Island City', spec: '2BR / 2BA · 1,040', status: 'available', deal: ['+2 mo free', '$1,500 back'], discount: 24, market: 4200, net: 3180, listed: '3 d ago', seen: '6 min', stale: false, src: 'StreetEasy' },
+    { b: 'Hudson Yards 35', u: '#2204', area: 'Hudson Yards', spec: 'Studio · 560', status: 'available', deal: ['+1.5 mo free'], discount: 20, market: 3700, net: 2940, listed: '5 d ago', seen: '18 min', stale: false, src: 'StreetEasy' },
+    { b: 'Journal Squared', u: '#1612', area: 'Jersey City DT', spec: '1BR / 1BA · 720', status: 'available', deal: ['$2,000 back'], discount: 18, market: 3050, net: 2490, listed: '6 d ago', seen: '42 min', stale: false, src: 'Apartments.com' },
+    { b: 'Sven LIC', u: '#4810', area: 'Long Island City', spec: '1BR · 680', status: 'available', deal: ['+2 mo free'], discount: 17, market: 3950, net: 3275, listed: '4 d ago', seen: '1 h', stale: false, src: 'StreetEasy' },
+    { b: 'The Easton', u: '#905', area: 'Hoboken', spec: '2BR / 2BA · 980', status: 'available', deal: ['$1,000 back'], discount: 17, market: 4400, net: 3650, listed: '8 d ago', seen: '2 h', stale: false, src: 'Building site' },
+    { b: 'VYV', u: '#1108', area: 'Jersey City DT', spec: 'Studio · 510', status: 'available', deal: ['+1 mo free'], discount: 17, market: 2780, net: 2310, listed: '8 d ago', seen: '3 h', stale: false, src: 'StreetEasy' },
+    { b: 'The Ashland', u: '#3201', area: 'Fort Greene', spec: '2BR / 1BA · 920', status: 'pending', deal: ['+1 mo free'], discount: 14, market: 4100, net: 3525, listed: '12 d ago', seen: '5 h', stale: false, src: 'StreetEasy' },
+    { b: 'Avalon Cove', u: '#812', area: 'Newport', spec: '1BR · 690', status: 'available', deal: ['+1 mo free'], discount: 13, market: 3300, net: 2871, listed: '2 d ago', seen: '8 min', stale: false, src: 'Apartments.com' },
+    { b: 'The Greene', u: '#22F', area: 'Long Island City', spec: '1BR · 720', status: 'available', deal: ['+1.5 mo free'], discount: 16, market: 3600, net: 3024, listed: '1 d ago', seen: '6 min', stale: false, src: 'StreetEasy' },
+    { b: 'Manhattan View', u: '#1402', area: 'Long Island City', spec: '2BR / 2BA · 1,100', status: 'unavailable', deal: [], discount: 0, market: 4800, net: 4800, listed: '30 d ago', seen: '12 d', stale: true, src: 'StreetEasy' },
+    { b: 'The Frank Gehry', u: '#5605', area: 'FiDi', spec: '1BR · 660', status: 'available', deal: ['+1 mo free'], discount: 12, market: 4200, net: 3700, listed: '7 d ago', seen: '32 min', stale: false, src: 'Building site' },
+    { b: 'Hudson Yards 35', u: '#1812', area: 'Hudson Yards', spec: '1BR · 720', status: 'available', deal: ['$500 back'], discount: 8, market: 4500, net: 4140, listed: '11 d ago', seen: '1 h', stale: false, src: 'StreetEasy' },
+    { b: 'Sven LIC', u: '#3308', area: 'Long Island City', spec: 'Studio · 480', status: 'rented', deal: [], discount: 0, market: 2900, net: 2900, listed: '45 d ago', seen: '3 d', stale: false, src: 'StreetEasy' },
+    { b: 'Journal Squared', u: '#702', area: 'Jersey City DT', spec: 'Studio · 470', status: 'available', deal: ['+1 mo free'], discount: 11, market: 2600, net: 2317, listed: '6 d ago', seen: '8 h', stale: false, src: 'Apartments.com' },
+    { b: 'VYV', u: '#2014', area: 'Jersey City DT', spec: '2BR · 1,020', status: 'available', deal: ['$1,000 back'], discount: 10, market: 4100, net: 3690, listed: '14 d ago', seen: '5 h', stale: false, src: 'Building site' },
+  ];
+
+  function statusPill(s) {
+    const map = {
+      available:    ['Available',   'text-emerald-700 bg-emerald-50',  'bg-emerald-500'],
+      pending:      ['Pending',     'text-amber-700 bg-amber-50',      'bg-amber-500'],
+      unavailable:  ['Unavailable', 'text-rose-700 bg-rose-50',        'bg-rose-500'],
+      rented:       ['Rented',      'text-slate-600 bg-slate-100',     'bg-slate-400'],
+      archived:     ['Archived',    'text-slate-500 bg-slate-100',     'bg-slate-300'],
+    };
+    const [label, c, dot] = map[s];
+    return `<span class="inline-flex items-center gap-1 text-[11px] font-bold ${c} px-2 py-0.5 rounded-full"><span class="dot ${dot}"></span>${label}</span>`;
+  }
+
+  function dealChips(arr) {
+    if (!arr.length) return `<span class="text-ink-400 text-[12px]">—</span>`;
+    return arr.map(d => {
+      const cls = d.includes('back') ? 'bg-amber-50 text-amber-700' : 'bg-sky-50 text-sky-700';
+      return `<span class="chip ${cls} px-1.5 py-0.5">${d}</span>`;
+    }).join(' ');
+  }
+
+  function priceCell(market, net, discount) {
+    if (discount === 0) return `<div class="text-right tnum"><div class="font-bold">$${net.toLocaleString()}</div></div>`;
+    return `<div class="text-right tnum leading-tight">
+      <div class="text-[11px] text-ink-400 line-through">$${market.toLocaleString()}</div>
+      <div class="font-bold">$${net.toLocaleString()} <span class="text-[10.5px] text-brand-700">−${discount}%</span></div>
+    </div>`;
+  }
+
+  function seenCell(seen, stale) {
+    return `<span class="inline-flex items-center gap-1 ${stale ? 'text-amber-700 font-semibold' : 'text-ink-700'}">
+      ${stale ? '<i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>' : '<span class="dot bg-emerald-500"></span>'}
+      ${seen}
+    </span>`;
+  }
+
+  document.getElementById('rows').innerHTML = rows.map(r => `
+    <tr class="${r.sel ? 'row-selected' : ''} cursor-pointer hover:bg-slate-50">
+      <td class="pl-4 pr-2 py-3"><input type="checkbox" class="accent-brand-600" ${r.sel ? 'checked' : ''} /></td>
+      <td class="px-2 py-3">
+        <div class="font-semibold leading-tight">${r.b} <span class="text-ink-400 font-normal">·</span> ${r.u}</div>
+        <div class="text-[11px] text-ink-500">${r.area} · ${r.spec} sqft</div>
+      </td>
+      <td class="px-2 py-3">${statusPill(r.status)}</td>
+      <td class="px-2 py-3"><div class="flex flex-wrap gap-1">${dealChips(r.deal)}</div></td>
+      <td class="px-2 py-3">${priceCell(r.market, r.net, r.discount)}</td>
+      <td class="px-2 py-3 text-ink-700 text-[12.5px]">${r.listed}</td>
+      <td class="px-2 py-3 text-[12.5px]">${seenCell(r.seen, r.stale)}</td>
+      <td class="px-2 py-3 text-[12.5px] text-ink-500">${r.src}</td>
+      <td class="px-2 py-3 text-right">
+        <button class="w-7 h-7 grid place-items-center rounded-md hover:bg-slate-100"><i data-lucide="more-horizontal" class="w-4 h-4 text-ink-500"></i></button>
+      </td>
+    </tr>
+  `).join('');
+  lucide.createIcons();
+
+  // ===== Price history mini chart =====
+  (function(){
+    const ctx = document.getElementById('historyChart');
+    const days = 60;
+    const labels = Array.from({length: days}, (_, i) => i);
+    const market = Array.from({length: days}, (_, i) => 4350 - Math.sin(i/9) * 50 - (i > 40 ? (i - 40) * 4 : 0));
+    const net    = Array.from({length: days}, (_, i) => 3950 - i*5 - Math.sin(i/6) * 30);
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Market', data: market, borderColor: '#94a3b8', borderWidth: 1.5, borderDash: [4,3], pointRadius: 0, tension: .35 },
+          { label: 'Net',    data: net,    borderColor: '#ea580c', borderWidth: 2,   pointRadius: 0, tension: .35, fill: true, backgroundColor: 'rgba(249,115,22,0.12)' },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#0f172a', padding: 8, cornerRadius: 8 } },
+        scales: {
+          x: { display: false },
+          y: { grid: { color: '#f1f5f9' }, ticks: { color: '#94a3b8', font: { size: 9 }, callback: v => '$' + (v/1000).toFixed(1) + 'k' } }
+        }
+      }
+    });
+  })();
+</script>
+</body>
+</html>

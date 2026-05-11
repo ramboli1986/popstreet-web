@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1280" />
+<title>PopStreet · Buildings — UI Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
+      colors: {
+        brand: { 50: '#fff7ed', 100: '#ffedd5', 200: '#fed7aa', 500: '#f97316', 600: '#ea580c', 700: '#c2410c' },
+        ink: { 900: '#0f172a', 700: '#334155', 500: '#64748b', 400: '#94a3b8' },
+      },
+      boxShadow: { card: '0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.03)' },
+      borderRadius: { xl2: '14px' }
+    }
+  }
+}
+</script>
+<style>
+  html, body { background: #f8fafc; color: #0f172a; font-family: Inter, ui-sans-serif, system-ui; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  .leaflet-container { background: #f1f5f9; font-family: inherit; }
+  .leaflet-tile { filter: grayscale(0.4) brightness(1.02); }
+  .row-selected { background: #fff7ed !important; box-shadow: inset 3px 0 0 #f97316; }
+</style>
+</head>
+<body class="min-h-screen">
+
+<div class="flex min-h-screen">
+  <!-- Sidebar -->
+  <aside class="w-[232px] shrink-0 border-r border-slate-200 bg-white flex flex-col">
+    <div class="h-14 flex items-center gap-2.5 px-5 border-b border-slate-200">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 grid place-items-center text-white font-bold">P</div>
+      <div>
+        <div class="text-[13px] font-bold tracking-tight">PopStreet</div>
+        <div class="text-[10px] text-ink-500 uppercase tracking-wider font-semibold">Admin Console</div>
+      </div>
+    </div>
+    <nav class="px-3 py-4 flex-1 text-sm">
+      <div class="px-2 text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">Workspace</div>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100">
+        <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Overview
+      </a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-brand-50 text-brand-700 font-semibold mt-0.5">
+        <i data-lucide="building-2" class="w-4 h-4"></i> Buildings
+        <span class="ml-auto text-[11px] text-brand-700 tnum font-bold">418</span>
+      </a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5">
+        <i data-lucide="door-open" class="w-4 h-4"></i> Units &amp; Deals
+        <span class="ml-auto text-[11px] text-ink-400 tnum">2,184</span>
+      </a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5">
+        <i data-lucide="map-pinned" class="w-4 h-4"></i> Map
+      </a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5">
+        <i data-lucide="radio-tower" class="w-4 h-4"></i> Data Sources
+        <span class="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+      </a>
+      <div class="px-2 mt-6 text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">Admin</div>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100">
+        <i data-lucide="users-round" class="w-4 h-4"></i> Accounts
+      </a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5">
+        <i data-lucide="settings" class="w-4 h-4"></i> Settings
+      </a>
+    </nav>
+  </aside>
+
+  <div class="flex-1 min-w-0 flex flex-col">
+    <!-- Topbar -->
+    <header class="h-14 border-b border-slate-200 bg-white px-6 flex items-center gap-4 sticky top-0 z-20">
+      <div class="flex items-center gap-2 text-[13px] text-ink-500">
+        <span>Workspace</span>
+        <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+        <span class="text-ink-900 font-semibold">Buildings</span>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <div class="flex items-center gap-2 px-3 h-9 rounded-lg border border-slate-200 bg-slate-50 text-[13px] text-ink-500 w-[280px]">
+          <i data-lucide="search" class="w-4 h-4"></i>
+          <span>Search buildings, units, addresses…</span>
+          <span class="ml-auto mono text-[10px] text-ink-400 border border-slate-200 rounded px-1.5 py-0.5 bg-white">⌘K</span>
+        </div>
+        <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">prod</span>
+        <div class="flex items-center gap-2 pl-2 ml-1 border-l border-slate-200">
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 grid place-items-center text-white text-xs font-bold">BO</div>
+          <div class="text-[12px] leading-tight">
+            <div class="font-semibold">Bo Li</div>
+            <div class="text-ink-500 text-[10.5px] flex items-center gap-1"><i data-lucide="shield-check" class="w-3 h-3 text-brand-600"></i> Super admin</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <main class="p-6 flex flex-col gap-4 min-h-0 flex-1">
+      <!-- Header row -->
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <div class="text-[11px] uppercase tracking-wider text-ink-500 font-bold">Buildings</div>
+          <h1 class="text-[24px] font-bold mt-1 leading-tight">Inventory · 418 properties</h1>
+          <div class="text-[13px] text-ink-500 mt-1">392 active · 26 archived · last sync 6 min ago</div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700 hover:bg-slate-50">
+            <i data-lucide="upload" class="w-3.5 h-3.5"></i> Import CSV
+          </button>
+          <button class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700 hover:bg-slate-50">
+            <i data-lucide="download" class="w-3.5 h-3.5"></i> Export
+          </button>
+          <button class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-slate-900 text-white text-[13px] font-semibold hover:bg-slate-800">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i> New building
+          </button>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div class="bg-white border border-slate-200 rounded-xl2 shadow-card px-3 py-2 flex items-center gap-2">
+        <div class="flex items-center gap-2 h-9 px-3 rounded-lg border border-slate-200 bg-slate-50 flex-1 max-w-[360px]">
+          <i data-lucide="search" class="w-4 h-4 text-ink-400"></i>
+          <input class="bg-transparent outline-none text-[13px] flex-1" placeholder="Name, address, area..." />
+        </div>
+        <select class="h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700">
+          <option>All status</option><option>Active</option><option>Archived</option>
+        </select>
+        <select class="h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700">
+          <option>All areas</option><option>Manhattan</option><option>Brooklyn</option><option>Queens</option><option>Jersey City</option><option>Hoboken</option>
+        </select>
+        <select class="h-9 px-3 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700">
+          <option>All managers</option><option>Greystar</option><option>Related</option><option>Equity Residential</option>
+        </select>
+        <div class="ml-auto flex items-center gap-2 text-[12px] text-ink-500">
+          <span><b class="text-ink-900 tnum">12</b> shown</span>
+          <span>·</span>
+          <span class="tnum">418 total</span>
+        </div>
+      </div>
+
+      <!-- Two-column master-detail -->
+      <div class="grid grid-cols-[1.15fr_1fr] gap-4 min-h-0 flex-1">
+
+        <!-- LIST -->
+        <div class="bg-white border border-slate-200 rounded-xl2 shadow-card flex flex-col overflow-hidden min-h-0">
+          <div class="overflow-auto scrollbar-thin">
+            <table class="w-full text-[13px]">
+              <thead class="bg-slate-50 text-ink-500 text-[10.5px] uppercase tracking-wider font-bold sticky top-0">
+                <tr>
+                  <th class="text-left px-4 py-2.5">Building</th>
+                  <th class="text-left px-4 py-2.5">Area</th>
+                  <th class="text-right px-4 py-2.5">Units</th>
+                  <th class="text-right px-4 py-2.5">Active deals</th>
+                  <th class="text-left px-4 py-2.5">Status</th>
+                  <th class="text-left px-4 py-2.5">Updated</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                <tr class="row-selected cursor-pointer">
+                  <td class="px-4 py-3">
+                    <div class="font-semibold">The Greene</div>
+                    <div class="text-[11px] text-ink-500">42-20 24th St · Long Island City</div>
+                  </td>
+                  <td class="px-4 py-3 text-ink-700">Long Island City</td>
+                  <td class="px-4 py-3 text-right tnum">218</td>
+                  <td class="px-4 py-3 text-right tnum"><span class="text-brand-700 font-bold">34</span></td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span></td>
+                  <td class="px-4 py-3 text-ink-500 text-[12px]">6 min ago</td>
+                </tr>
+                <tr class="cursor-pointer hover:bg-slate-50">
+                  <td class="px-4 py-3">
+                    <div class="font-semibold">Hudson Yards 35</div>
+                    <div class="text-[11px] text-ink-500">35 Hudson Yards · Manhattan</div>
+                  </td>
+                  <td class="px-4 py-3 text-ink-700">Hudson Yards</td>
+                  <td class="px-4 py-3 text-right tnum">412</td>
+                  <td class="px-4 py-3 text-right tnum"><span class="text-brand-700 font-bold">61</span></td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span></td>
+                  <td class="px-4 py-3 text-ink-500 text-[12px]">12 min ago</td>
+                </tr>
+                <tr class="cursor-pointer hover:bg-slate-50">
+                  <td class="px-4 py-3">
+                    <div class="font-semibold">Journal Squared</div>
+                    <div class="text-[11px] text-ink-500">615 Pavonia Ave · Jersey City</div>
+                  </td>
+                  <td class="px-4 py-3 text-ink-700">Jersey City DT</td>
+                  <td class="px-4 py-3 text-right tnum">540</td>
+                  <td class="px-4 py-3 text-right tnum"><span class="text-brand-700 font-bold">52</span></td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span></td>
+                  <td class="px-4 py-3 text-ink-500 text-[12px]">42 min ago</td>
+                </tr>
+                <tr class="cursor-pointer hover:bg-slate-50">
+                  <td class="px-4 py-3">
+                    <div class="font-semibold">Sven LIC</div>
+                    <div class="text-[11px] text-ink-500">29-59 Northern Blvd · LIC</div>
+                  </td>
+                  <td class="px-4 py-3 text-ink-700">Long Island City</td>
+                  <td class="px-4 py-3 text-right tnum">958</td>
+                  <td class="px-4 py-3 text-right tnum"><span class="text-brand-700 font-bold">47</span></td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span></td>
+                  <td class="px-4 py-3 text-ink-500 text-[12px]">1 h ago</td>
+                </tr>
+                <tr class="cursor-pointer hover:bg-slate-50">
+                  <td class="px-4 py-3">
+                    <div class="font-semibold">The Easton</div>
+                    <div class="text-[11px] text-ink-500">222 Grand St · Hoboken</div>
+                  </td>
+                  <td class="px-4 py-3 text-ink-700">Hoboken</td>
+                  <td class="px-4 py-3 text-right tnum">156</td>
+                  <td class="px-4 py-3 text-right tnum"><span class="text-brand-700 font-bold">18</span></td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span></td>
+                  <td class="px-4 py-3 text-ink-500 text-[12px]">2 h ago</td>
+                </tr>
+                <tr class="cursor-pointer hover:bg-slate-50">
+                  <td class="px-4 py-3">
+                    <div class="font-semibold">VYV</div>
+                    <div class="text-[11px] text-ink-500">474 Warren St · Jersey City</div>
+                  </td>
+                  <td class="px-4 py-3 text-ink-700">Jersey City DT</td>
+                  <td class="px-4 py-3 text-right tnum">421</td>
+                  <td class="px-4 py-3 text-right tnum"><span class="text-brand-700 font-bold">29</span></td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span></td>
+                  <td class="px-4 py-3 text-ink-500 text-[12px]">3 h ago</td>
+                </tr>
+                <tr class="cursor-pointer hover:bg-slate-50">
+                  <td class="px-4 py-3">
+                    <div class="font-semibold">The Frank Gehry</div>
+                    <div class="text-[11px] text-ink-500">8 Spruce St · FiDi</div>
+                  </td>
+                  <td class="px-4 py-3 text-ink-700">FiDi</td>
+                  <td class="px-4 py-3 text-right tnum">898</td>
+                  <td class="px-4 py-3 text-right tnum"><span class="text-brand-700 font-bold">23</span></td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span></td>
+                  <td class="px-4 py-3 text-ink-500 text-[12px]">4 h ago</td>
+                </tr>
+                <tr class="cursor-pointer hover:bg-slate-50">
+                  <td class="px-4 py-3">
+                    <div class="font-semibold">Manhattan View</div>
+                    <div class="text-[11px] text-ink-500">25-30 Crescent St · LIC</div>
+                  </td>
+                  <td class="px-4 py-3 text-ink-700">Long Island City</td>
+                  <td class="px-4 py-3 text-right tnum">200</td>
+                  <td class="px-4 py-3 text-right tnum"><span class="text-ink-400 tnum">0</span></td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Archived</span></td>
+                  <td class="px-4 py-3 text-ink-500 text-[12px]">Apr 14</td>
+                </tr>
+                <tr class="cursor-pointer hover:bg-slate-50">
+                  <td class="px-4 py-3">
+                    <div class="font-semibold">The Ashland</div>
+                    <div class="text-[11px] text-ink-500">250 Ashland Pl · Fort Greene</div>
+                  </td>
+                  <td class="px-4 py-3 text-ink-700">Fort Greene</td>
+                  <td class="px-4 py-3 text-right tnum">580</td>
+                  <td class="px-4 py-3 text-right tnum"><span class="text-brand-700 font-bold">31</span></td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span></td>
+                  <td class="px-4 py-3 text-ink-500 text-[12px]">5 h ago</td>
+                </tr>
+                <tr class="cursor-pointer hover:bg-slate-50">
+                  <td class="px-4 py-3">
+                    <div class="font-semibold">Avalon Cove</div>
+                    <div class="text-[11px] text-ink-500">444 Washington Blvd · JC</div>
+                  </td>
+                  <td class="px-4 py-3 text-ink-700">Newport</td>
+                  <td class="px-4 py-3 text-right tnum">504</td>
+                  <td class="px-4 py-3 text-right tnum"><span class="text-brand-700 font-bold">38</span></td>
+                  <td class="px-4 py-3"><span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span></td>
+                  <td class="px-4 py-3 text-ink-500 text-[12px]">6 h ago</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- INSPECTOR -->
+        <div class="bg-white border border-slate-200 rounded-xl2 shadow-card flex flex-col overflow-hidden min-h-0">
+          <!-- header -->
+          <div class="flex items-start justify-between gap-3 p-4 border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white">
+            <div class="flex items-start gap-3 min-w-0">
+              <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-200 to-orange-400 grid place-items-center text-orange-900 font-bold shrink-0">TG</div>
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <h2 class="text-[17px] font-bold truncate">The Greene</h2>
+                  <span class="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active
+                  </span>
+                </div>
+                <div class="text-[12px] text-ink-500">42-20 24th St, Long Island City, NY 11101</div>
+                <div class="flex items-center gap-2 text-[11.5px] text-ink-500 mt-1.5">
+                  <span class="mono">40.7440, −73.9489</span>
+                  <span>·</span>
+                  <span>Score <b class="text-ink-900">8.6</b></span>
+                  <span>·</span>
+                  <span class="text-ink-700">Greystar</span>
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button class="w-8 h-8 grid place-items-center rounded-lg border border-slate-200 bg-white text-ink-700 hover:bg-slate-50"><i data-lucide="external-link" class="w-4 h-4"></i></button>
+              <button class="w-8 h-8 grid place-items-center rounded-lg border border-slate-200 bg-white text-ink-700 hover:bg-slate-50"><i data-lucide="archive" class="w-4 h-4"></i></button>
+              <button class="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-brand-600 text-white text-[12px] font-semibold hover:bg-brand-700">
+                <i data-lucide="save" class="w-3.5 h-3.5"></i> Save
+              </button>
+            </div>
+          </div>
+
+          <!-- Tabs -->
+          <div class="flex border-b border-slate-100 px-2">
+            <button class="px-3 h-10 text-[13px] font-semibold text-ink-900 border-b-2 border-brand-600">Details</button>
+            <button class="px-3 h-10 text-[13px] font-semibold text-ink-500 hover:text-ink-900">Location &amp; map</button>
+            <button class="px-3 h-10 text-[13px] font-semibold text-ink-500 hover:text-ink-900">Media</button>
+            <button class="px-3 h-10 text-[13px] font-semibold text-ink-500 hover:text-ink-900">Activity</button>
+          </div>
+
+          <!-- Tab content -->
+          <div class="p-5 overflow-y-auto scrollbar-thin space-y-5">
+            <!-- quick stats -->
+            <div class="grid grid-cols-3 gap-2">
+              <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div class="text-[11px] text-ink-500 font-semibold">Total units</div>
+                <div class="text-[20px] font-bold tnum mt-1">218</div>
+              </div>
+              <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div class="text-[11px] text-ink-500 font-semibold">Active deals</div>
+                <div class="text-[20px] font-bold tnum mt-1 text-brand-700">34</div>
+              </div>
+              <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div class="text-[11px] text-ink-500 font-semibold">Min net rent</div>
+                <div class="text-[20px] font-bold tnum mt-1">$2,890</div>
+              </div>
+            </div>
+
+            <!-- form fields -->
+            <div class="grid grid-cols-2 gap-3">
+              <label class="block">
+                <span class="text-[11.5px] font-semibold text-ink-700">Name</span>
+                <input class="mt-1 w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] focus:border-brand-500 focus:ring-2 focus:ring-brand-100 outline-none" value="The Greene" />
+              </label>
+              <label class="block">
+                <span class="text-[11.5px] font-semibold text-ink-700">Slug</span>
+                <input class="mt-1 w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] mono" value="the-greene-lic" />
+              </label>
+              <label class="block col-span-2">
+                <span class="text-[11.5px] font-semibold text-ink-700">Address</span>
+                <input class="mt-1 w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px]" value="42-20 24th St, Long Island City, NY 11101" />
+              </label>
+              <label class="block">
+                <span class="text-[11.5px] font-semibold text-ink-700">Neighborhood</span>
+                <select class="mt-1 w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px]"><option>Long Island City</option></select>
+              </label>
+              <label class="block">
+                <span class="text-[11.5px] font-semibold text-ink-700">Management company</span>
+                <input class="mt-1 w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px]" value="Greystar" />
+              </label>
+              <label class="block">
+                <span class="text-[11.5px] font-semibold text-ink-700">Year built</span>
+                <input class="mt-1 w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] tnum" value="2018" />
+              </label>
+              <label class="block">
+                <span class="text-[11.5px] font-semibold text-ink-700">Total floors</span>
+                <input class="mt-1 w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] tnum" value="32" />
+              </label>
+            </div>
+
+            <label class="block">
+              <span class="text-[11.5px] font-semibold text-ink-700">Summary</span>
+              <textarea class="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] min-h-[72px]">Modern high-rise with skyline views, rooftop pool, and walking distance to Court Square subway.</textarea>
+            </label>
+
+            <div>
+              <div class="text-[11.5px] font-semibold text-ink-700 mb-1.5">Description labels</div>
+              <div class="flex flex-wrap gap-1.5">
+                <span class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-slate-100 text-ink-700 font-semibold">rooftop pool <i data-lucide="x" class="w-3 h-3"></i></span>
+                <span class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-slate-100 text-ink-700 font-semibold">doorman <i data-lucide="x" class="w-3 h-3"></i></span>
+                <span class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-slate-100 text-ink-700 font-semibold">pet friendly <i data-lucide="x" class="w-3 h-3"></i></span>
+                <span class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full bg-slate-100 text-ink-700 font-semibold">gym <i data-lucide="x" class="w-3 h-3"></i></span>
+                <button class="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-full border border-dashed border-slate-300 text-ink-500 hover:bg-slate-50 font-semibold">
+                  <i data-lucide="plus" class="w-3 h-3"></i> Add label
+                </button>
+              </div>
+            </div>
+
+            <!-- mini map preview -->
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[11.5px] font-semibold text-ink-700">Location preview</span>
+                <button class="text-[11.5px] font-semibold text-brand-700 hover:underline">Edit in map →</button>
+              </div>
+              <div id="map" class="h-[180px] rounded-lg overflow-hidden border border-slate-200"></div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+  lucide.createIcons();
+  const map = L.map('map', { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false }).setView([40.7440, -73.9489], 15);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { subdomains: 'abcd' }).addTo(map);
+  L.circleMarker([40.7440, -73.9489], { radius: 10, color: '#c2410c', weight: 2, fillColor: '#f97316', fillOpacity: .85 }).addTo(map);
+</script>
+</body>
+</html>

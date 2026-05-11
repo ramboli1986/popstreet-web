@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=1320" />
+<title>PopStreet · Map editor — UI Mockup</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] },
+      colors: {
+        brand: { 50: '#fff7ed', 100: '#ffedd5', 200: '#fed7aa', 500: '#f97316', 600: '#ea580c', 700: '#c2410c' },
+        ink: { 900: '#0f172a', 700: '#334155', 500: '#64748b', 400: '#94a3b8' },
+      },
+      boxShadow: { card: '0 1px 2px rgba(15,23,42,0.04), 0 1px 3px rgba(15,23,42,0.03)' },
+      borderRadius: { xl2: '14px' }
+    }
+  }
+}
+</script>
+<style>
+  html, body { background: #f8fafc; color: #0f172a; font-family: Inter, ui-sans-serif, system-ui; height: 100%; }
+  .tnum { font-variant-numeric: tabular-nums; }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+  .leaflet-container { background: #eef2f7; font-family: inherit; }
+  .leaflet-tile { filter: grayscale(0.45) brightness(1.02); }
+  .row-active { background: #fff7ed !important; box-shadow: inset 3px 0 0 #f97316; }
+
+  /* Custom building markers */
+  .pin {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 8px 0 22px;
+    border-radius: 999px;
+    background: #fff;
+    color: #1f2937;
+    font-size: 11px;
+    font-weight: 700;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(15,23,42,.12);
+    white-space: nowrap;
+    transform: translate(-12px, -11px);
+  }
+  .pin::before {
+    content: "";
+    position: absolute;
+    left: 4px; top: 50%;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--c, #f97316);
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(15,23,42,.18);
+    transform: translateY(-50%);
+  }
+  .pin-dot { /* small dot only, no label */
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--c, #f97316);
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(15,23,42,.2);
+    transform: translate(-7px, -7px);
+  }
+  .pin-selected {
+    background: #f97316;
+    color: white;
+    border-color: #c2410c;
+    box-shadow: 0 4px 10px -2px rgba(234, 88, 12, .55);
+    height: 28px;
+    padding: 0 10px 0 26px;
+    font-size: 12px;
+    transform: translate(-14px, -14px);
+  }
+  .pin-selected::before {
+    background: #fff;
+    width: 14px; height: 14px;
+  }
+  .pin-warn { --c: #f59e0b; }
+  .pin-warn::before { background: #f59e0b; }
+  /* drag handle visual hint */
+  .pin-selected::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+    border-radius: 999px;
+    border: 2px dashed rgba(234, 88, 12, .35);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: .8; }
+    50% { transform: scale(1.08); opacity: .3; }
+  }
+</style>
+</head>
+<body class="overflow-hidden">
+
+<div class="flex h-screen">
+  <!-- Sidebar -->
+  <aside class="w-[232px] shrink-0 border-r border-slate-200 bg-white flex flex-col">
+    <div class="h-14 flex items-center gap-2.5 px-5 border-b border-slate-200">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 grid place-items-center text-white font-bold">P</div>
+      <div>
+        <div class="text-[13px] font-bold tracking-tight">PopStreet</div>
+        <div class="text-[10px] text-ink-500 uppercase tracking-wider font-semibold">Admin Console</div>
+      </div>
+    </div>
+    <nav class="px-3 py-4 flex-1 text-sm">
+      <div class="px-2 text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">Workspace</div>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100"><i data-lucide="layout-dashboard" class="w-4 h-4"></i> Overview</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5"><i data-lucide="building-2" class="w-4 h-4"></i> Buildings <span class="ml-auto text-[11px] text-ink-400 tnum">418</span></a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5"><i data-lucide="door-open" class="w-4 h-4"></i> Units &amp; Deals <span class="ml-auto text-[11px] text-ink-400 tnum">2,184</span></a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-brand-50 text-brand-700 font-semibold mt-0.5"><i data-lucide="map-pinned" class="w-4 h-4"></i> Map</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5"><i data-lucide="radio-tower" class="w-4 h-4"></i> Data Sources <span class="ml-auto w-1.5 h-1.5 rounded-full bg-emerald-500"></span></a>
+      <div class="px-2 mt-6 text-[10px] uppercase tracking-wider text-ink-400 font-semibold mb-2">Admin</div>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100"><i data-lucide="users-round" class="w-4 h-4"></i> Accounts</a>
+      <a class="flex items-center gap-3 px-3 py-2 rounded-lg text-ink-700 hover:bg-slate-100 mt-0.5"><i data-lucide="settings" class="w-4 h-4"></i> Settings</a>
+    </nav>
+  </aside>
+
+  <!-- Main column -->
+  <div class="flex-1 min-w-0 flex flex-col">
+    <!-- Topbar -->
+    <header class="h-14 border-b border-slate-200 bg-white px-6 flex items-center gap-4">
+      <div class="flex items-center gap-2 text-[13px] text-ink-500">
+        <span>Workspace</span>
+        <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+        <span class="text-ink-900 font-semibold">Map editor</span>
+      </div>
+      <div class="ml-auto flex items-center gap-2">
+        <div class="flex items-center gap-2 px-3 h-9 rounded-lg border border-slate-200 bg-slate-50 text-[13px] text-ink-500 w-[280px]">
+          <i data-lucide="search" class="w-4 h-4"></i>
+          <span>Search buildings, units, addresses…</span>
+          <span class="ml-auto mono text-[10px] text-ink-400 border border-slate-200 rounded px-1.5 py-0.5 bg-white">⌘K</span>
+        </div>
+        <span class="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">prod</span>
+        <div class="flex items-center gap-2 pl-2 ml-1 border-l border-slate-200">
+          <div class="w-8 h-8 rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 grid place-items-center text-white text-xs font-bold">BO</div>
+          <div class="text-[12px] leading-tight">
+            <div class="font-semibold">Bo Li</div>
+            <div class="text-ink-500 text-[10.5px] flex items-center gap-1"><i data-lucide="shield-check" class="w-3 h-3 text-brand-600"></i> Super admin</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Page header -->
+    <div class="px-6 pt-5 pb-3 flex items-start justify-between gap-4">
+      <div>
+        <div class="text-[11px] uppercase tracking-wider text-ink-500 font-bold">Geo &amp; coordinates</div>
+        <h1 class="text-[22px] font-bold mt-1 leading-tight">Building location map</h1>
+        <div class="text-[13px] text-ink-500 mt-1">418 buildings · 3 out-of-bounds · click a pin to select, drag to reposition</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold text-ink-700 cursor-pointer">
+          <input id="toggleCluster" type="checkbox" class="accent-brand-600" /> Cluster pins
+        </label>
+        <label class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-slate-200 bg-white text-[12px] font-semibold text-ink-700 cursor-pointer">
+          <input id="toggleLabels" type="checkbox" class="accent-brand-600" checked /> Show names
+        </label>
+        <button class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-[12px] font-semibold hover:bg-amber-100">
+          <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> Validate coords
+        </button>
+        <button class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-slate-900 text-white text-[12px] font-semibold hover:bg-slate-800">
+          <i data-lucide="locate" class="w-3.5 h-3.5"></i> Geocode missing
+        </button>
+      </div>
+    </div>
+
+    <!-- Workspace: list | map | editor -->
+    <div class="px-6 pb-6 grid grid-cols-[260px_1fr_320px] gap-4 flex-1 min-h-0">
+
+      <!-- Buildings list -->
+      <div class="bg-white border border-slate-200 rounded-xl2 shadow-card flex flex-col overflow-hidden min-h-0">
+        <div class="p-3 border-b border-slate-100">
+          <div class="flex items-center gap-2 h-9 px-3 rounded-lg border border-slate-200 bg-slate-50">
+            <i data-lucide="search" class="w-4 h-4 text-ink-400"></i>
+            <input class="bg-transparent outline-none text-[13px] flex-1" placeholder="Name or address…" />
+          </div>
+          <div class="flex items-center gap-1 mt-2 text-[11px]">
+            <button class="px-2 h-6 rounded-md bg-slate-900 text-white font-semibold">All <span class="text-white/70 tnum">418</span></button>
+            <button class="px-2 h-6 rounded-md text-ink-700 hover:bg-slate-100">Active</button>
+            <button class="px-2 h-6 rounded-md text-amber-700 bg-amber-50 hover:bg-amber-100 inline-flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3 h-3"></i> Issues <span class="tnum">3</span></button>
+          </div>
+        </div>
+        <div id="buildingList" class="overflow-y-auto scrollbar-thin divide-y divide-slate-100 text-[13px] flex-1"></div>
+        <div class="border-t border-slate-100 px-3 py-2 text-[11px] text-ink-500 flex items-center justify-between">
+          <span><b class="text-ink-900 tnum">12</b> shown</span>
+          <span class="tnum">scroll for more</span>
+        </div>
+      </div>
+
+      <!-- MAP -->
+      <div class="bg-white border border-slate-200 rounded-xl2 shadow-card flex flex-col overflow-hidden min-h-0 relative">
+        <div id="map" class="flex-1"></div>
+
+        <!-- Floating overlay: legend -->
+        <div class="absolute top-3 left-3 bg-white/95 backdrop-blur border border-slate-200 rounded-xl shadow-card px-3 py-2 text-[11px] flex items-center gap-3">
+          <div class="font-bold uppercase tracking-wider text-ink-500">Legend</div>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-brand-500 border-2 border-white" style="box-shadow:0 0 0 1px rgba(15,23,42,.2)"></span> Building</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-amber-500 border-2 border-white" style="box-shadow:0 0 0 1px rgba(15,23,42,.2)"></span> Issue</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-full bg-slate-400 border-2 border-white" style="box-shadow:0 0 0 1px rgba(15,23,42,.2)"></span> Archived</span>
+        </div>
+
+        <!-- Floating overlay: status / dirty banner -->
+        <div class="absolute bottom-3 left-3 right-3 mx-auto max-w-[640px] bg-brand-50 border border-brand-200 rounded-xl px-4 py-2.5 shadow-card flex items-center gap-3">
+          <i data-lucide="move" class="w-4 h-4 text-brand-700"></i>
+          <div class="text-[12.5px] text-brand-700 flex-1">
+            <b>The Greene</b> — coordinates moved by <span class="mono">+0.0003, −0.0005</span>. Drag again to fine-tune, or save changes.
+          </div>
+          <button class="h-7 px-2 text-[11px] font-semibold text-ink-700 hover:underline">Reset</button>
+          <button class="h-7 px-3 rounded-md bg-brand-600 text-white text-[11px] font-semibold hover:bg-brand-700 inline-flex items-center gap-1">
+            <i data-lucide="save" class="w-3 h-3"></i> Save
+          </button>
+        </div>
+      </div>
+
+      <!-- Editor panel -->
+      <aside class="bg-white border border-slate-200 rounded-xl2 shadow-card flex flex-col overflow-hidden min-h-0">
+        <div class="p-4 border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white">
+          <div class="text-[11px] uppercase tracking-wider text-ink-500 font-bold">Selected building</div>
+          <h2 class="text-[16px] font-bold mt-1">The Greene</h2>
+          <div class="text-[12px] text-ink-500">42-20 24th St, Long Island City, NY 11101</div>
+          <div class="mt-2 flex items-center gap-1.5 flex-wrap">
+            <span class="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Active</span>
+            <span class="inline-flex items-center gap-1 text-[10.5px] font-bold text-ink-700 bg-slate-100 px-1.5 py-0.5 rounded">218 units · 34 deals</span>
+            <span class="inline-flex items-center gap-1 text-[10.5px] font-bold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded">Long Island City</span>
+          </div>
+        </div>
+
+        <div class="p-4 space-y-4 overflow-y-auto scrollbar-thin flex-1">
+          <!-- Coords -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-[11.5px] font-semibold text-ink-700 inline-flex items-center gap-1"><i data-lucide="map-pin" class="w-3.5 h-3.5"></i> Coordinates</span>
+              <span class="text-[10.5px] text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded font-semibold">unsaved</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="block">
+                <span class="text-[10.5px] text-ink-500 font-semibold uppercase tracking-wider">Lat</span>
+                <input class="mt-1 w-full h-9 rounded-lg border border-brand-300 ring-2 ring-brand-100 bg-white px-2 text-[13px] mono tnum outline-none" value="40.7443" />
+              </label>
+              <label class="block">
+                <span class="text-[10.5px] text-ink-500 font-semibold uppercase tracking-wider">Lng</span>
+                <input class="mt-1 w-full h-9 rounded-lg border border-brand-300 ring-2 ring-brand-100 bg-white px-2 text-[13px] mono tnum outline-none" value="−73.9494" />
+              </label>
+            </div>
+            <div class="text-[11px] text-ink-500 mt-1.5 flex items-center gap-1">
+              <i data-lucide="info" class="w-3 h-3"></i>
+              Drag the pin on the map or edit values directly. Saved to <span class="mono">buildings.latitude / longitude</span>.
+            </div>
+          </div>
+
+          <!-- Address -->
+          <div>
+            <div class="text-[11.5px] font-semibold text-ink-700 inline-flex items-center gap-1 mb-1.5"><i data-lucide="map" class="w-3.5 h-3.5"></i> Address</div>
+            <input class="w-full h-9 rounded-lg border border-slate-200 bg-white px-2 text-[13px]" value="42-20 24th St" />
+            <div class="grid grid-cols-3 gap-2 mt-2">
+              <input class="h-9 rounded-lg border border-slate-200 bg-white px-2 text-[13px]" value="Long Island City" placeholder="City" />
+              <input class="h-9 rounded-lg border border-slate-200 bg-white px-2 text-[13px] tnum" value="NY" placeholder="State" />
+              <input class="h-9 rounded-lg border border-slate-200 bg-white px-2 text-[13px] tnum mono" value="11101" placeholder="ZIP" />
+            </div>
+            <button class="mt-2 inline-flex items-center gap-1 text-[11.5px] font-semibold text-brand-700 hover:underline">
+              <i data-lucide="wand-2" class="w-3 h-3"></i> Geocode from address
+            </button>
+          </div>
+
+          <!-- Area / neighborhood -->
+          <div>
+            <div class="text-[11.5px] font-semibold text-ink-700 mb-1.5">Neighborhood</div>
+            <select class="w-full h-9 rounded-lg border border-slate-200 bg-white px-2 text-[13px]">
+              <option>Long Island City</option><option>Hudson Yards</option><option>Williamsburg</option>
+            </select>
+          </div>
+
+          <!-- Validation panel -->
+          <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <div class="flex items-center gap-2 text-emerald-800 text-[12px] font-bold">
+              <i data-lucide="check-circle-2" class="w-4 h-4"></i> Coordinates valid
+            </div>
+            <div class="text-[11.5px] text-emerald-800/80 mt-1">Within NY/NJ bounds · 0.12 mi from geocoded address.</div>
+          </div>
+        </div>
+
+        <div class="p-3 border-t border-slate-100 flex items-center gap-2">
+          <button class="flex-1 h-9 rounded-lg border border-slate-200 bg-white text-[13px] font-semibold text-ink-700 hover:bg-slate-50">Cancel</button>
+          <button class="flex-1 h-9 rounded-lg bg-brand-600 text-white text-[13px] font-semibold hover:bg-brand-700 inline-flex items-center justify-center gap-1.5">
+            <i data-lucide="save" class="w-3.5 h-3.5"></i> Save
+          </button>
+        </div>
+      </aside>
+    </div>
+  </div>
+</div>
+
+<script>
+  lucide.createIcons();
+
+  // ===== Sample buildings (shape mirrors Supabase `buildings` table) =====
+  const buildings = [
+    { id: 'b1',  name: 'The Greene',          address: '42-20 24th St',          area: 'Long Island City', latitude: 40.7443, longitude: -73.9494, units: 218, deals: 34, status: 'active', selected: true },
+    { id: 'b2',  name: 'Hudson Yards 35',     address: '35 Hudson Yards',        area: 'Hudson Yards',     latitude: 40.7540, longitude: -74.0010, units: 412, deals: 61, status: 'active' },
+    { id: 'b3',  name: 'Journal Squared',     address: '615 Pavonia Ave',        area: 'Jersey City DT',   latitude: 40.7340, longitude: -74.0631, units: 540, deals: 52, status: 'active' },
+    { id: 'b4',  name: 'Sven LIC',            address: '29-59 Northern Blvd',    area: 'Long Island City', latitude: 40.7510, longitude: -73.9380, units: 958, deals: 47, status: 'active' },
+    { id: 'b5',  name: 'The Easton',          address: '222 Grand St',           area: 'Hoboken',          latitude: 40.7440, longitude: -74.0324, units: 156, deals: 18, status: 'active' },
+    { id: 'b6',  name: 'VYV',                 address: '474 Warren St',          area: 'Jersey City DT',   latitude: 40.7178, longitude: -74.0431, units: 421, deals: 29, status: 'active' },
+    { id: 'b7',  name: 'The Frank Gehry',     address: '8 Spruce St',            area: 'FiDi',             latitude: 40.7110, longitude: -74.0050, units: 898, deals: 23, status: 'active' },
+    { id: 'b8',  name: 'The Ashland',         address: '250 Ashland Pl',         area: 'Fort Greene',      latitude: 40.6873, longitude: -73.9774, units: 580, deals: 31, status: 'active' },
+    { id: 'b9',  name: 'Avalon Cove',         address: '444 Washington Blvd',    area: 'Newport',          latitude: 40.7263, longitude: -74.0345, units: 504, deals: 38, status: 'active' },
+    { id: 'b10', name: 'Manhattan View',      address: '25-30 Crescent St',      area: 'Long Island City', latitude: 40.7560, longitude: -73.9400, units: 200, deals: 0,  status: 'archived' },
+    { id: 'b11', name: 'Long Island House',   address: '−missing−',              area: 'Long Island City', latitude: 0, longitude: 0,            units: 84,  deals: 0,  status: 'issue' },
+    { id: 'b12', name: 'Outside NJ test row', address: 'Philadelphia, PA',       area: 'Other',            latitude: 39.9526, longitude: -75.1652, units: 60,  deals: 0,  status: 'issue' },
+  ];
+
+  // ===== Render list =====
+  function renderList(focusId) {
+    const html = buildings.map(b => `
+      <button data-id="${b.id}" class="bld-row w-full text-left px-3 py-2.5 hover:bg-slate-50 ${b.selected ? 'row-active' : ''}">
+        <div class="flex items-center gap-2">
+          <div class="flex-1 min-w-0">
+            <div class="font-semibold truncate">${b.name}</div>
+            <div class="text-[11px] text-ink-500 truncate">${b.area} · ${b.address}</div>
+          </div>
+          ${b.status === 'issue'
+            ? `<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded"><i data-lucide="alert-triangle" class="w-3 h-3"></i> Fix</span>`
+            : b.status === 'archived'
+              ? `<span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">Arch</span>`
+              : `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded tnum">${b.deals}</span>`}
+        </div>
+        <div class="text-[10.5px] text-ink-400 mono mt-1">${b.latitude === 0 ? 'no coords' : b.latitude.toFixed(4) + ', ' + b.longitude.toFixed(4)}</div>
+      </button>
+    `).join('');
+    document.getElementById('buildingList').innerHTML = html;
+    lucide.createIcons();
+
+    document.querySelectorAll('.bld-row').forEach(el => {
+      el.addEventListener('click', () => {
+        buildings.forEach(b => b.selected = b.id === el.dataset.id);
+        renderList();
+        renderMarkers();
+        const sel = buildings.find(b => b.selected);
+        if (sel && sel.latitude !== 0) map.flyTo([sel.latitude, sel.longitude], 15, { duration: .6 });
+      });
+    });
+  }
+
+  // ===== Map =====
+  const map = L.map('map', { zoomControl: true, attributionControl: false }).setView([40.745, -74.0], 11);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 19 }).addTo(map);
+
+  let markers = [];
+
+  function renderMarkers() {
+    markers.forEach(m => m.remove());
+    markers = [];
+    const showLabels = document.getElementById('toggleLabels').checked;
+
+    buildings.forEach(b => {
+      if (b.latitude === 0) return; // skip missing coords
+      const selected = b.selected;
+      const color = b.status === 'issue' ? '#f59e0b' : b.status === 'archived' ? '#94a3b8' : '#f97316';
+      const html = selected
+        ? `<div class="pin pin-selected"><span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px #c2410c"></span>${b.name}</div>`
+        : showLabels
+          ? `<div class="pin ${b.status === 'issue' ? 'pin-warn' : ''}" style="--c:${color}">${b.name}</div>`
+          : `<div class="pin-dot" style="--c:${color}"></div>`;
+      const marker = L.marker([b.latitude, b.longitude], {
+        icon: L.divIcon({ className: '', html, iconAnchor: [0, 0] }),
+        draggable: selected,
+        zIndexOffset: selected ? 1000 : 0,
+      });
+      marker.on('click', () => {
+        buildings.forEach(x => x.selected = x.id === b.id);
+        renderList();
+        renderMarkers();
+      });
+      marker.addTo(map);
+      markers.push(marker);
+    });
+  }
+
+  document.getElementById('toggleLabels').addEventListener('change', renderMarkers);
+
+  renderList();
+  renderMarkers();
+
+  // initial fit to NYC area
+  const valid = buildings.filter(b => b.latitude !== 0 && b.latitude > 40 && b.latitude < 41);
+  if (valid.length) {
+    const bounds = L.latLngBounds(valid.map(b => [b.latitude, b.longitude]));
+    map.fitBounds(bounds, { padding: [60, 60], maxZoom: 13 });
+  }
+</script>
+</body>
+</html>

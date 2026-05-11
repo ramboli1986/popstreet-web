@@ -11,8 +11,9 @@
   --line-soft: #edf0f5;
   --ink: #1f2937;
   --muted: #7b8794;
-  --brand: #409eff;
-  --brand-strong: #247ee4;
+  --brand: #f97316;
+  --brand-strong: #c2410c;
+  --brand-soft: #fff7ed;
   --green: #13a463;
   --green-soft: #e7f7ef;
   --orange: #f59e0b;
@@ -382,6 +383,12 @@ h3 {
 .grid-4 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.85fr);
   gap: 12px;
 }
 
@@ -1039,8 +1046,77 @@ h3 {
   padding: 12px;
 }
 
+.compact-list {
+  gap: 8px;
+}
+
+.dashboard-building-row {
+  grid-template-columns: minmax(0, 1fr) auto 96px;
+  box-shadow: none;
+}
+
+.deal-list {
+  display: grid;
+  gap: 8px;
+}
+
+.deal-row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.4fr) minmax(150px, 0.8fr) minmax(120px, 0.7fr) minmax(190px, 1fr) 90px;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 10px 12px;
+}
+
+.deal-row strong {
+  font-size: 13px;
+}
+
+.deal-layout,
+.deal-price,
+.deal-meta {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.deal-price strong {
+  color: var(--brand-strong);
+  font-size: 15px;
+}
+
+.deal-price span,
+.deal-meta span {
+  color: var(--muted);
+}
+
+.deal-chip {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid #fed7aa;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+  font-size: 12px;
+  font-weight: 850;
+  padding: 5px 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deal-meta {
+  justify-items: end;
+  font-weight: 850;
+}
+
 @media (max-width: 1260px) {
   .grid-4,
+  .dashboard-grid,
   .operations-grid,
   .operations-grid.map-mode {
     grid-template-columns: 1fr;
@@ -1054,12 +1130,18 @@ h3 {
 @media (max-width: 880px) {
   .main-layout,
   .grid-4,
+  .dashboard-grid,
   .form-grid,
   .form-grid.three,
   .account-row,
+  .deal-row,
   .geo-row,
   .ops-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .deal-meta {
+    justify-items: start;
   }
 
   .topbar {

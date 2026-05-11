@@ -7,7 +7,7 @@ import { AuthPanel } from "./auth-panel";
 import { AccountsManager } from "./accounts-manager";
 import { BuildingManager } from "./building-manager";
 import { Dashboard } from "./dashboard";
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { canManageAccounts, roleLabel } from "@/lib/format";
 import type { AccountProfile } from "@/lib/types";
 
@@ -71,6 +71,14 @@ export function AdminApp() {
 
   useEffect(() => {
     let isMounted = true;
+
+    if (supabaseConfigError) {
+      setMessage(supabaseConfigError);
+      setIsLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
 
     async function boot() {
       try {
@@ -144,6 +152,14 @@ export function AdminApp() {
     return (
       <main className="auth-page">
         <div className="message">Loading PopStreet Admin...</div>
+      </main>
+    );
+  }
+
+  if (supabaseConfigError) {
+    return (
+      <main className="auth-page">
+        <div className="message error">{message ?? supabaseConfigError}</div>
       </main>
     );
   }

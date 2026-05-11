@@ -1,16 +1,16 @@
 @import "leaflet/dist/leaflet.css";
 
 :root {
-  --bg: #eef2f6;
-  --sidebar: #263445;
-  --sidebar-deep: #1f2d3d;
-  --sidebar-active: #1d8cf8;
+  --bg: #f8fafc;
+  --sidebar: #ffffff;
+  --sidebar-deep: #f1f5f9;
+  --sidebar-active: #f97316;
   --surface: #ffffff;
   --surface-soft: #f7f9fc;
-  --line: #d8dee8;
-  --line-soft: #edf0f5;
-  --ink: #1f2937;
-  --muted: #7b8794;
+  --line: #e2e8f0;
+  --line-soft: #edf2f7;
+  --ink: #0f172a;
+  --muted: #64748b;
   --brand: #f97316;
   --brand-strong: #c2410c;
   --brand-soft: #fff7ed;
@@ -29,6 +29,7 @@
 
 html,
 body {
+  height: 100%;
   min-height: 100%;
   margin: 0;
   background: var(--bg);
@@ -131,12 +132,15 @@ h3 {
 }
 
 .admin-shell {
+  display: grid;
+  grid-template-rows: 58px minmax(0, 1fr);
+  height: 100vh;
   min-height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
 }
 
 .topbar {
-  position: sticky;
-  top: 0;
   z-index: 30;
   display: flex;
   min-height: 58px;
@@ -186,48 +190,50 @@ h3 {
 
 .main-layout {
   display: grid;
-  grid-template-columns: 210px minmax(0, 1fr);
-  min-height: calc(100vh - 58px);
+  grid-template-columns: 232px minmax(0, 1fr);
+  height: calc(100vh - 58px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .sidebar {
-  position: sticky;
-  top: 58px;
-  align-self: start;
   height: calc(100vh - 58px);
-  border-right: 0;
+  min-height: 0;
+  border-right: 1px solid var(--line);
   background: var(--sidebar);
   padding: 14px 0;
+  overflow-y: auto;
 }
 
 .nav-button {
   display: flex;
-  width: 100%;
+  width: calc(100% - 24px);
   align-items: center;
   gap: 12px;
   border: 0;
-  border-left: 3px solid transparent;
-  border-radius: 0;
+  border-radius: 8px;
   background: transparent;
-  color: #c7d1dd;
-  padding: 13px 18px;
+  color: #334155;
+  margin: 0 12px 4px;
+  padding: 10px 12px;
   font-weight: 700;
   text-align: left;
 }
 
 .nav-button:hover {
   background: var(--sidebar-deep);
-  color: white;
+  color: var(--ink);
 }
 
 .nav-button.active {
-  border-left-color: var(--sidebar-active);
-  background: var(--sidebar-deep);
-  color: white;
+  background: var(--brand-soft);
+  color: var(--brand-strong);
 }
 
 .content {
   min-width: 0;
+  min-height: 0;
+  overflow: auto;
   padding: 18px;
 }
 
@@ -236,7 +242,7 @@ h3 {
 .content:has(.global-units-panel),
 .content:has(.map-workspace-panel) {
   display: flex;
-  height: calc(100vh - 58px);
+  height: 100%;
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
@@ -622,13 +628,51 @@ h3 {
 }
 
 .admin-table tbody tr.selected {
-  background: #eef6ff;
+  background: var(--brand-soft);
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+.clickable-row:focus-visible {
+  outline: 3px solid rgb(249 115 22 / 22%);
+  outline-offset: -3px;
+}
+
+.unit-table-row.clickable-row:hover .unit-cell {
+  background: #fffaf4;
 }
 
 .row-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 0 0 auto;
+  border-top: 1px solid var(--line-soft);
+  background: white;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+  padding: 10px 14px;
+}
+
+.pagination-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pagination-actions strong {
+  color: var(--ink);
+  font-size: 12px;
 }
 
 .mini-action {

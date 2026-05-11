@@ -43,6 +43,8 @@ type UnitStatusFilter = "all" | ListingStatus;
 type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 
 const listingStatuses: ListingStatus[] = ["available", "pending", "unavailable", "rented", "archived"];
+const buildingPageSize = 25;
+const unitPageSize = 25;
 
 export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [buildings, setBuildings] = useState<Building[]>([]);
@@ -61,6 +63,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [unitBuildingFilter, setUnitBuildingFilter] = useState("all");
   const [unitStatusFilter, setUnitStatusFilter] = useState<UnitStatusFilter>("all");
   const [unitBedroomFilter, setUnitBedroomFilter] = useState<UnitBedroomFilter>("all");
+  const [buildingPage, setBuildingPage] = useState(1);
+  const [unitPage, setUnitPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -157,6 +161,14 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   useEffect(() => {
     loadUnits();
   }, [loadUnits]);
+
+  useEffect(() => {
+    setBuildingPage(1);
+  }, [areaFilter, search, statusFilter]);
+
+  useEffect(() => {
+    setUnitPage(1);
+  }, [unitBedroomFilter, unitBuildingFilter, unitSearch, unitStatusFilter]);
 
   const buildingMetrics = useMemo(() => {
     const latestListingByUnit = new Map<string, UnitListing>();
@@ -284,6 +296,26 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       available: filteredUnits.filter((unit) => (unit.listing ?? defaultListing(unit.id)).status === "available").length
     }),
     [filteredUnits]
+  );
+
+  const buildingPageMeta = useMemo(
+    () => paginationMeta(filteredBuildings.length, buildingPage, buildingPageSize),
+    [buildingPage, filteredBuildings.length]
+  );
+
+  const paginatedBuildings = useMemo(
+    () => filteredBuildings.slice(buildingPageMeta.startIndex, buildingPageMeta.endIndex),
+    [buildingPageMeta.endIndex, buildingPageMeta.startIndex, filteredBuildings]
+  );
+
+  const unitPageMeta = useMemo(
+    () => paginationMeta(filteredUnits.length, unitPage, unitPageSize),
+    [filteredUnits.length, unitPage]
+  );
+
+  const paginatedUnits = useMemo(
+    () => filteredUnits.slice(unitPageMeta.startIndex, unitPageMeta.endIndex),
+    [filteredUnits, unitPageMeta.endIndex, unitPageMeta.startIndex]
   );
 
   const selectedUnitFilterBuilding = useMemo(
@@ -631,9 +663,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           buildingsByID={buildingByID}
           canEdit={canEdit}
           filteredCount={filteredUnits.length}
+          pageMeta={unitPageMeta}
+          onPageChange={setUnitPage}
           onEditUnit={openEditUnitDialog}
           totalCount={units.length}
-          units={filteredUnits}
+          units={paginatedUnits}
         />
       ) : (
         <div className={`inventory-stack ${mode === "building" ? "building-only" : ""}`}>
@@ -646,16 +680,22 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               <span className="count-pill">{buildings.length} total</span>
             </div>
             <BuildingTable
-              buildings={filteredBuildings}
+              buildings={paginatedBuildings}
               canEdit={canEdit}
               metrics={buildingMetrics}
               selectedBuilding={selectedBuilding}
+              startIndex={buildingPageMeta.startIndex}
               onArchive={(building) => setBuildingActive(building, false)}
               onDelete={deleteBuilding}
               onEdit={openBuildingEditor}
               onAddUnit={openAddUnitDialog}
+              onOpen={openBuildingEditor}
               onRestore={(building) => setBuildingActive(building, true)}
-              onSelect={selectBuilding}
+            />
+            <PaginationControls
+              label="buildings"
+              pageMeta={buildingPageMeta}
+              onPageChange={setBuildingPage}
             />
           </section>
 
@@ -701,19 +741,21 @@ function BuildingTable({
   onAddUnit,
   onDelete,
   onEdit,
+  onOpen,
   onRestore,
-  onSelect
+  startIndex
 }: {
   buildings: Building[];
   canEdit: boolean;
   metrics: Map<string, BuildingMetric>;
   selectedBuilding: Building | null;
+  startIndex: number;
   onArchive: (building: Building) => void;
   onAddUnit: (building: Building) => void;
   onDelete: (building: Building) => void;
   onEdit: (building: Building) => void;
+  onOpen: (building: Building) => void;
   onRestore: (building: Building) => void;
-  onSelect: (building: Building) => void;
 }) {
   if (buildings.length === 0) {
     return <EmptyState title="No buildings found" body="Try clearing the search or location filters." />;
@@ -740,10 +782,28 @@ function BuildingTable({
             const isSelected = selectedBuilding?.id === building.id;
 
             return (
-              <tr className={isSelected ? "selected" : ""} key={building.id}>
-                <td className="row-index">{index + 1}</td>
+              <tr
+                className={`clickable-row ${isSelected ? "selected" : ""}`}
+                key={building.id}
+                onClick={() => onOpen(building)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpen(building);
+                  }
+                }}
+                tabIndex={0}
+              >
+                <td className="row-index">{startIndex + index + 1}</td>
                 <td>
-                  <button className="table-primary-link" onClick={() => onSelect(building)} type="button">
+                  <button
+                    className="table-primary-link"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpen(building);
+                    }}
+                    type="button"
+                  >
                     {building.name}
                   </button>
                   <div className="table-subtext">{building.address}</div>
@@ -767,11 +827,27 @@ function BuildingTable({
                 </td>
                 <td>
                   <div className="row-actions">
-                    <button className="mini-action" disabled={!canEdit} onClick={() => onEdit(building)} type="button">
+                    <button
+                      className="mini-action"
+                      disabled={!canEdit}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onEdit(building);
+                      }}
+                      type="button"
+                    >
                       <Pencil size={14} />
                       Edit
                     </button>
-                    <button className="mini-action" disabled={!canEdit} onClick={() => onAddUnit(building)} type="button">
+                    <button
+                      className="mini-action"
+                      disabled={!canEdit}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onAddUnit(building);
+                      }}
+                      type="button"
+                    >
                       <Plus size={14} />
                       Add unit
                     </button>
@@ -779,7 +855,10 @@ function BuildingTable({
                       <button
                         className="icon-button"
                         disabled={!canEdit}
-                        onClick={() => onArchive(building)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onArchive(building);
+                        }}
                         title="Archive"
                         type="button"
                       >
@@ -789,7 +868,10 @@ function BuildingTable({
                       <button
                         className="icon-button"
                         disabled={!canEdit}
-                        onClick={() => onRestore(building)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onRestore(building);
+                        }}
                         title="Activate"
                         type="button"
                       >
@@ -799,7 +881,10 @@ function BuildingTable({
                     <button
                       className="icon-button danger"
                       disabled={!canEdit}
-                      onClick={() => onDelete(building)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onDelete(building);
+                      }}
                       title="Delete"
                       type="button"
                     >
@@ -1029,6 +1114,8 @@ function UnitManager({
   units,
   canEdit,
   filteredCount,
+  pageMeta,
+  onPageChange,
   onEditUnit,
   totalCount
 }: {
@@ -1036,6 +1123,8 @@ function UnitManager({
   units: UnitWithListing[];
   canEdit: boolean;
   filteredCount: number;
+  pageMeta: PaginationMeta;
+  onPageChange: (page: number) => void;
   onEditUnit: (unit: UnitWithListing) => void;
   totalCount: number;
 }) {
@@ -1077,6 +1166,7 @@ function UnitManager({
           </div>
         </div>
       )}
+      <PaginationControls label="units" pageMeta={pageMeta} onPageChange={onPageChange} />
     </section>
   );
 }
@@ -1095,9 +1185,26 @@ function UnitListingRow({
   const listing = unit.listing ?? defaultListing(unit.id);
 
   return (
-    <div className="unit-table-row unit-table-row-readonly">
+    <div
+      className="unit-table-row unit-table-row-readonly clickable-row"
+      onClick={() => onEditUnit(unit)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onEditUnit(unit);
+        }
+      }}
+      tabIndex={0}
+    >
       <div className="unit-cell unit-identity">
-        <button className="table-primary-link unit-number-link" onClick={() => onEditUnit(unit)} type="button">
+        <button
+          className="table-primary-link unit-number-link"
+          onClick={(event) => {
+            event.stopPropagation();
+            onEditUnit(unit);
+          }}
+          type="button"
+        >
           {unit.unit_number || "No unit #"}
         </button>
         <div className="table-subtext">{unit.name || "Untitled unit"}</div>
@@ -1127,7 +1234,15 @@ function UnitListingRow({
         </span>
       </div>
       <div className="unit-cell unit-actions">
-        <button className="mini-action" disabled={!canEdit} onClick={() => onEditUnit(unit)} type="button">
+        <button
+          className="mini-action"
+          disabled={!canEdit}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEditUnit(unit);
+          }}
+          type="button"
+        >
           <Pencil size={14} />
           Edit card
         </button>
@@ -1558,6 +1673,72 @@ function EmptyState({ title, body }: { title: string; body: string }) {
     <div className="empty-state">
       <strong>{title}</strong>
       <p>{body}</p>
+    </div>
+  );
+}
+
+type PaginationMeta = {
+  currentPage: number;
+  pageCount: number;
+  pageSize: number;
+  startIndex: number;
+  endIndex: number;
+  total: number;
+};
+
+function paginationMeta(total: number, requestedPage: number, pageSize: number): PaginationMeta {
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const currentPage = Math.min(Math.max(1, requestedPage), pageCount);
+  const startIndex = total === 0 ? 0 : (currentPage - 1) * pageSize;
+  const endIndex = total === 0 ? 0 : Math.min(startIndex + pageSize, total);
+
+  return {
+    currentPage,
+    pageCount,
+    pageSize,
+    startIndex,
+    endIndex,
+    total
+  };
+}
+
+function PaginationControls({
+  label,
+  onPageChange,
+  pageMeta
+}: {
+  label: string;
+  onPageChange: (page: number) => void;
+  pageMeta: PaginationMeta;
+}) {
+  return (
+    <div className="pagination-bar">
+      <span>
+        {pageMeta.total === 0
+          ? `No ${label}`
+          : `Showing ${pageMeta.startIndex + 1}-${pageMeta.endIndex} of ${pageMeta.total} ${label}`}
+      </span>
+      <div className="pagination-actions">
+        <button
+          className="ghost-button compact-button"
+          disabled={pageMeta.currentPage <= 1}
+          onClick={() => onPageChange(pageMeta.currentPage - 1)}
+          type="button"
+        >
+          Previous
+        </button>
+        <strong>
+          {pageMeta.currentPage} / {pageMeta.pageCount}
+        </strong>
+        <button
+          className="ghost-button compact-button"
+          disabled={pageMeta.currentPage >= pageMeta.pageCount}
+          onClick={() => onPageChange(pageMeta.currentPage + 1)}
+          type="button"
+        >
+          Next
+        </button>
+      </div>
     </div>
   );
 }

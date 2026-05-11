@@ -137,7 +137,7 @@ export function Dashboard() {
       <div className="content-header">
         <div>
           <div className="eyebrow">Overview</div>
-          <h2>Building health</h2>
+          <h2>Today&apos;s market pulse</h2>
         </div>
         <button className="ghost-button" disabled={isLoading} onClick={loadDashboard} type="button">
           <RefreshCcw size={16} />

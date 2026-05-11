@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import { Building2, DoorOpen, LayoutDashboard, LogOut, MapPinned, ShieldCheck, UsersRound } from "lucide-react";
 import { AuthPanel } from "./auth-panel";
@@ -12,6 +13,33 @@ import { canManageAccounts, roleLabel } from "@/lib/format";
 import type { AccountProfile } from "@/lib/types";
 
 type ViewKey = "dashboard" | "building" | "units" | "map" | "accounts";
+type AdminAppProps = {
+  initialView?: ViewKey;
+};
+
+const routeByView: Record<ViewKey, string> = {
+  dashboard: "/",
+  building: "/buildings",
+  units: "/units",
+  map: "/map",
+  accounts: "/accounts"
+};
+
+function viewFromPath(pathname: string): ViewKey {
+  if (pathname.startsWith("/buildings")) {
+    return "building";
+  }
+  if (pathname.startsWith("/units")) {
+    return "units";
+  }
+  if (pathname.startsWith("/map")) {
+    return "map";
+  }
+  if (pathname.startsWith("/accounts")) {
+    return "accounts";
+  }
+  return "dashboard";
+}
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return Promise.race([
@@ -22,12 +50,18 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   ]);
 }
 
-export function AdminApp() {
+export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<AccountProfile | null>(null);
-  const [view, setView] = useState<ViewKey>("dashboard");
+  const [view, setView] = useState<ViewKey>(initialView);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setView(viewFromPath(pathname));
+  }, [pathname]);
 
   const loadProfile = useCallback(async (nextSession: Session | null) => {
     if (!nextSession?.user) {
@@ -121,9 +155,9 @@ export function AdminApp() {
   const navItems = useMemo(
     () => [
       { key: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
-      { key: "building" as const, label: "Building", icon: Building2 },
-      { key: "units" as const, label: "Units", icon: DoorOpen },
-      { key: "map" as const, label: "Map edit", icon: MapPinned },
+      { key: "building" as const, label: "Buildings", icon: Building2 },
+      { key: "units" as const, label: "Units & Deals", icon: DoorOpen },
+      { key: "map" as const, label: "Map", icon: MapPinned },
       { key: "accounts" as const, label: "Accounts", icon: UsersRound, requiresAccountAdmin: true }
     ],
     []
@@ -202,7 +236,10 @@ export function AdminApp() {
                 <button
                   className={`nav-button ${view === item.key ? "active" : ""}`}
                   key={item.key}
-                  onClick={() => setView(item.key)}
+                  onClick={() => {
+                    setView(item.key);
+                    router.push(routeByView[item.key]);
+                  }}
                   type="button"
                 >
                   <Icon size={17} />

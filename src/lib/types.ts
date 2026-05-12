@@ -20,6 +20,19 @@ export type Neighborhood = {
   state: string;
 };
 
+export type ManagementCompany = {
+  id: string;
+  slug: string;
+  name: string;
+  website: string | null;
+  key_assets: string[];
+  unit_count_label: string | null;
+  estimated_unit_count: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Building = {
   id: string;
   slug: string;
@@ -41,12 +54,14 @@ export type Building = {
   year_built: number | null;
   total_floors: number | null;
   total_units: number | null;
+  management_company_id: string | null;
   management_company: string | null;
   website: string | null;
   area: string | null;
   created_at: string;
   updated_at: string;
   neighborhoods?: Pick<Neighborhood, "name" | "slug"> | null;
+  management_companies?: Pick<ManagementCompany, "id" | "slug" | "name" | "website"> | null;
 };
 
 export type Unit = {

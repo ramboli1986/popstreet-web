@@ -24,7 +24,16 @@ import {
   stringArrayToInput,
   toStringArray
 } from "@/lib/format";
-import type { AccountProfile, Building, ListingStatus, Neighborhood, Unit, UnitListing, UnitWithListing } from "@/lib/types";
+import type {
+  AccountProfile,
+  Building,
+  ListingStatus,
+  ManagementCompany,
+  Neighborhood,
+  Unit,
+  UnitListing,
+  UnitWithListing
+} from "@/lib/types";
 
 type BuildingManagerProps = {
   profile: AccountProfile | null;
@@ -71,6 +80,7 @@ const mapAreaPalette = [
 export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
+  const [managementCompanies, setManagementCompanies] = useState<ManagementCompany[]>([]);
   const [unitIndex, setUnitIndex] = useState<UnitIndex[]>([]);
   const [listingIndex, setListingIndex] = useState<UnitListing[]>([]);
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null);
@@ -100,23 +110,25 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setIsLoading(true);
     setError(null);
 
-    const [buildingResult, neighborhoodResult, unitResult, listingResult] = await Promise.all([
+    const [buildingResult, neighborhoodResult, companyResult, unitResult, listingResult] = await Promise.all([
       supabase
         .from("buildings")
-        .select("*, neighborhoods(name, slug)")
+        .select("*, neighborhoods(name, slug), management_companies(id, slug, name, website)")
         .order("updated_at", { ascending: false })
         .limit(800),
       supabase.from("neighborhoods").select("id, slug, name, city, state").order("name"),
+      supabase.from("management_companies").select("*").order("name"),
       supabase.from("units").select("id, building_id").limit(5000),
       supabase.from("unit_listings").select("*").order("updated_at", { ascending: false }).limit(5000)
     ]);
 
     setIsLoading(false);
 
-    if (buildingResult.error || neighborhoodResult.error || unitResult.error || listingResult.error) {
+    if (buildingResult.error || neighborhoodResult.error || companyResult.error || unitResult.error || listingResult.error) {
       setError(
         buildingResult.error?.message ??
           neighborhoodResult.error?.message ??
+          companyResult.error?.message ??
           unitResult.error?.message ??
           listingResult.error?.message ??
           "Could not load inventory."
@@ -132,6 +144,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
     setBuildings(nextBuildings);
     setNeighborhoods((neighborhoodResult.data ?? []) as Neighborhood[]);
+    setManagementCompanies((companyResult.data ?? []) as ManagementCompany[]);
     setUnitIndex((unitResult.data ?? []) as UnitIndex[]);
     setListingIndex((listingResult.data ?? []) as UnitListing[]);
     setSelectedBuilding(nextSelected);
@@ -459,12 +472,14 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       year_built: null,
       total_floors: null,
       total_units: null,
+      management_company_id: null,
       management_company: null,
       website: null,
       area: "",
       created_at: now,
       updated_at: now,
-      neighborhoods: null
+      neighborhoods: null,
+      management_companies: null
     };
 
     setSelectedBuilding(nextDraft);
@@ -484,8 +499,17 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     const payload = buildingPayload(draft);
     const isNew = draft.id.startsWith("new-");
     const result = isNew
-      ? await supabase.from("buildings").insert(payload).select("*, neighborhoods(name, slug)").single()
-      : await supabase.from("buildings").update(payload).eq("id", draft.id).select("*, neighborhoods(name, slug)").single();
+      ? await supabase
+          .from("buildings")
+          .insert(payload)
+          .select("*, neighborhoods(name, slug), management_companies(id, slug, name, website)")
+          .single()
+      : await supabase
+          .from("buildings")
+          .update(payload)
+          .eq("id", draft.id)
+          .select("*, neighborhoods(name, slug), management_companies(id, slug, name, website)")
+          .single();
 
     setIsSaving(false);
 
@@ -709,6 +733,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             canEdit={canEdit}
             draft={draft}
             isSaving={isSaving}
+            managementCompanies={managementCompanies}
             neighborhoods={neighborhoods}
             onArchive={() => setBuildingActive(draft, false)}
             onClose={() => setIsBuildingEditorOpen(false)}
@@ -878,6 +903,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           canEdit={canEdit}
           draft={draft}
           isSaving={isSaving}
+          managementCompanies={managementCompanies}
           neighborhoods={neighborhoods}
           onArchive={() => setBuildingActive(draft, false)}
           onClose={() => setIsBuildingEditorOpen(false)}
@@ -940,6 +966,7 @@ function BuildingTable({
             <th>No.</th>
             <th>Building</th>
             <th>Location</th>
+            <th>Company</th>
             <th>Available</th>
             <th>Lowest net</th>
             <th>Updated</th>
@@ -984,6 +1011,12 @@ function BuildingTable({
                   <div className="table-subtext">
                     {building.city}, {building.state}
                   </div>
+                </td>
+                <td>
+                  <strong>{building.management_companies?.name ?? building.management_company ?? "N/A"}</strong>
+                  {building.management_companies?.website || building.website ? (
+                    <div className="table-subtext">{building.management_companies?.website ?? building.website}</div>
+                  ) : null}
                 </td>
                 <td>
                   <strong>{metric?.availableCount ?? 0}</strong>
@@ -1076,6 +1109,7 @@ function BuildingEditor({
   canEdit,
   draft,
   isSaving,
+  managementCompanies,
   neighborhoods,
   updateDraft,
   onArchive,
@@ -1085,6 +1119,7 @@ function BuildingEditor({
   canEdit: boolean;
   draft: Building;
   isSaving: boolean;
+  managementCompanies: ManagementCompany[];
   neighborhoods: Neighborhood[];
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
   onArchive: () => void;
@@ -1167,12 +1202,29 @@ function BuildingEditor({
           value={draft.total_units}
           onChange={(value) => updateDraft("total_units", value == null ? null : Math.round(value))}
         />
-        <InputField
-          disabled={!canEdit}
-          label="Management"
-          value={draft.management_company ?? ""}
-          onChange={(value) => updateDraft("management_company", value || null)}
-        />
+        <label className="field">
+          <span>Management company</span>
+          <select
+            disabled={!canEdit}
+            value={draft.management_company_id ?? ""}
+            onChange={(event) => {
+              const company = managementCompanies.find((item) => item.id === event.target.value) ?? null;
+              updateDraft("management_company_id", company?.id ?? null);
+              updateDraft("management_company", company?.name ?? null);
+              updateDraft("management_companies", company);
+              if (company?.website && !draft.website) {
+                updateDraft("website", company.website);
+              }
+            }}
+          >
+            <option value="">None</option>
+            {managementCompanies.map((company) => (
+              <option key={company.id} value={company.id}>
+                {company.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <InputField
           disabled={!canEdit}
           label="Website"
@@ -1234,6 +1286,7 @@ function BuildingEditorDialog({
   canEdit,
   draft,
   isSaving,
+  managementCompanies,
   neighborhoods,
   updateDraft,
   onArchive,
@@ -1244,6 +1297,7 @@ function BuildingEditorDialog({
   canEdit: boolean;
   draft: Building;
   isSaving: boolean;
+  managementCompanies: ManagementCompany[];
   neighborhoods: Neighborhood[];
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
   onArchive: () => void;
@@ -1268,6 +1322,7 @@ function BuildingEditorDialog({
             canEdit={canEdit}
             draft={draft}
             isSaving={isSaving}
+            managementCompanies={managementCompanies}
             neighborhoods={neighborhoods}
             onArchive={onArchive}
             onRestore={onRestore}
@@ -1993,6 +2048,7 @@ function buildingPayload(building: Building) {
     year_built: building.year_built,
     total_floors: building.total_floors,
     total_units: building.total_units,
+    management_company_id: building.management_company_id,
     management_company: building.management_company,
     website: building.website,
     area: building.area

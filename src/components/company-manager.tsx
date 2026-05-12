@@ -1,0 +1,483 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ExternalLink, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { canEditInventory, canManageAccounts, formatDate, slugify, stringArrayToInput, toStringArray } from "@/lib/format";
+import type { AccountProfile, ManagementCompany } from "@/lib/types";
+
+type CompanyManagerProps = {
+  profile: AccountProfile | null;
+};
+
+type BuildingCompanyLink = {
+  id: string;
+  management_company_id: string | null;
+};
+
+const companyPageSize = 25;
+
+export function CompanyManager({ profile }: CompanyManagerProps) {
+  const [companies, setCompanies] = useState<ManagementCompany[]>([]);
+  const [buildingLinks, setBuildingLinks] = useState<BuildingCompanyLink[]>([]);
+  const [draft, setDraft] = useState<ManagementCompany | null>(null);
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const canEdit = canEditInventory(profile?.role);
+  const canDelete = canManageAccounts(profile?.role);
+
+  const loadCompanies = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    const [companyResult, buildingResult] = await Promise.all([
+      supabase.from("management_companies").select("*").order("name"),
+      supabase.from("buildings").select("id, management_company_id").limit(5000)
+    ]);
+
+    setIsLoading(false);
+
+    if (companyResult.error) {
+      setError(companyResult.error.message);
+      return;
+    }
+
+    if (buildingResult.error) {
+      setError(buildingResult.error.message);
+      return;
+    }
+
+    setCompanies((companyResult.data ?? []) as ManagementCompany[]);
+    setBuildingLinks((buildingResult.data ?? []) as BuildingCompanyLink[]);
+  }, []);
+
+  useEffect(() => {
+    loadCompanies();
+  }, [loadCompanies]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
+
+  const linkedBuildingCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    buildingLinks.forEach((building) => {
+      if (!building.management_company_id) {
+        return;
+      }
+
+      counts.set(building.management_company_id, (counts.get(building.management_company_id) ?? 0) + 1);
+    });
+
+    return counts;
+  }, [buildingLinks]);
+
+  const filteredCompanies = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    if (!query) {
+      return companies;
+    }
+
+    return companies.filter((company) =>
+      [
+        company.name,
+        company.slug,
+        company.website,
+        company.unit_count_label,
+        company.notes,
+        ...company.key_assets
+      ]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(query))
+    );
+  }, [companies, search]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredCompanies.length / companyPageSize));
+  const currentPage = Math.min(page, pageCount);
+  const startIndex = (currentPage - 1) * companyPageSize;
+  const paginatedCompanies = filteredCompanies.slice(startIndex, startIndex + companyPageSize);
+
+  function createCompanyDraft() {
+    const now = new Date().toISOString();
+
+    setDraft({
+      id: `new-${Date.now()}`,
+      slug: "new-management-company",
+      name: "New Management Company",
+      website: null,
+      key_assets: [],
+      unit_count_label: null,
+      estimated_unit_count: null,
+      notes: null,
+      created_at: now,
+      updated_at: now
+    });
+  }
+
+  function updateDraft<K extends keyof ManagementCompany>(key: K, value: ManagementCompany[K]) {
+    setDraft((current) => (current ? { ...current, [key]: value } : current));
+  }
+
+  async function saveCompany() {
+    if (!draft || !canEdit) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+    setMessage(null);
+
+    const payload = companyPayload(draft);
+    const isNew = draft.id.startsWith("new-");
+    const result = isNew
+      ? await supabase.from("management_companies").insert(payload).select("*").single()
+      : await supabase.from("management_companies").update(payload).eq("id", draft.id).select("*").single();
+
+    setIsSaving(false);
+
+    if (result.error) {
+      setError(result.error.message);
+      return;
+    }
+
+    const savedCompany = result.data as ManagementCompany;
+    setCompanies((current) => {
+      const withoutSaved = current.filter((company) => company.id !== draft.id && company.id !== savedCompany.id);
+      return [...withoutSaved, savedCompany].sort((first, second) => first.name.localeCompare(second.name));
+    });
+    setDraft(null);
+    setMessage(isNew ? "Management company created." : "Management company saved.");
+  }
+
+  async function deleteCompany(company: ManagementCompany) {
+    if (!canDelete || company.id.startsWith("new-")) {
+      return;
+    }
+
+    const linkedCount = linkedBuildingCounts.get(company.id) ?? 0;
+    const confirmed = window.confirm(
+      `Delete ${company.name}?${linkedCount > 0 ? ` This will unlink ${linkedCount} building${linkedCount === 1 ? "" : "s"}.` : ""}`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setError(null);
+    setMessage(null);
+
+    const { error: deleteError } = await supabase.from("management_companies").delete().eq("id", company.id);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    setCompanies((current) => current.filter((item) => item.id !== company.id));
+    setBuildingLinks((current) =>
+      current.map((building) =>
+        building.management_company_id === company.id ? { ...building, management_company_id: null } : building
+      )
+    );
+    setDraft((current) => (current?.id === company.id ? null : current));
+    setMessage("Management company deleted.");
+  }
+
+  return (
+    <>
+      <div className="page-hero manager-hero">
+        <div>
+          <div className="eyebrow">Management companies</div>
+          <h1>Company list · {companies.length.toLocaleString()} records</h1>
+          <p>
+            Search, edit, add, and remove management companies. Buildings can link to one company record for cleaner data.
+          </p>
+        </div>
+        <button className="button" disabled={!canEdit} onClick={createCompanyDraft} type="button">
+          <Plus size={16} />
+          Add company
+        </button>
+      </div>
+
+      {error ? <div className="message error compact-message">{error}</div> : null}
+      {message ? <div className="message compact-message">{message}</div> : null}
+
+      <section className="toolbar-row">
+        <label className="search-field">
+          <Search size={16} />
+          <input
+            placeholder="Search company, website, assets..."
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <div className="toolbar-stat">
+          <strong>{filteredCompanies.length}</strong>
+          <span>companies</span>
+        </div>
+        <div className="toolbar-stat">
+          <strong>{buildingLinks.filter((building) => building.management_company_id).length}</strong>
+          <span>linked buildings</span>
+        </div>
+      </section>
+
+      <section className="data-panel building-list-panel">
+        <div className="panel-heading">
+          <div>
+            <div className="eyebrow">Company list</div>
+            <h3>Fast query and edit</h3>
+          </div>
+          <span className="count-pill">{isLoading ? "Loading..." : `${companies.length} total`}</span>
+        </div>
+
+        {paginatedCompanies.length === 0 ? (
+          <div className="empty-state">No management companies found.</div>
+        ) : (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>No.</th>
+                  <th>Company</th>
+                  <th>Website</th>
+                  <th>Key assets</th>
+                  <th>Units</th>
+                  <th>Buildings</th>
+                  <th>Updated</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedCompanies.map((company, index) => (
+                  <tr className="clickable-row" key={company.id} onClick={() => setDraft(company)} tabIndex={0}>
+                    <td className="row-index">{startIndex + index + 1}</td>
+                    <td>
+                      <button
+                        className="table-primary-link"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setDraft(company);
+                        }}
+                        type="button"
+                      >
+                        {company.name}
+                      </button>
+                      <div className="table-subtext">{company.slug}</div>
+                    </td>
+                    <td>
+                      {company.website ? (
+                        <a className="table-primary-link muted" href={company.website} rel="noreferrer" target="_blank">
+                          Website <ExternalLink size={13} />
+                        </a>
+                      ) : (
+                        <span className="table-subtext">N/A</span>
+                      )}
+                    </td>
+                    <td>
+                      <span>{company.key_assets.slice(0, 2).join(", ") || "N/A"}</span>
+                      {company.key_assets.length > 2 ? (
+                        <div className="table-subtext">+{company.key_assets.length - 2} more</div>
+                      ) : null}
+                    </td>
+                    <td>{company.unit_count_label ?? company.estimated_unit_count?.toLocaleString() ?? "N/A"}</td>
+                    <td>{linkedBuildingCounts.get(company.id) ?? 0}</td>
+                    <td>{formatDate(company.updated_at)}</td>
+                    <td>
+                      <div className="row-actions">
+                        <button
+                          className="mini-action"
+                          disabled={!canEdit}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDraft(company);
+                          }}
+                          type="button"
+                        >
+                          <Pencil size={14} />
+                          Edit
+                        </button>
+                        <button
+                          className="icon-button danger"
+                          disabled={!canDelete}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            deleteCompany(company);
+                          }}
+                          title="Delete"
+                          type="button"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div className="pagination-bar">
+          <span>
+            {filteredCompanies.length === 0
+              ? "No companies"
+              : `Showing ${startIndex + 1}-${Math.min(startIndex + companyPageSize, filteredCompanies.length)} of ${filteredCompanies.length} companies`}
+          </span>
+          <div className="pagination-actions">
+            <button className="ghost-button compact-button" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)} type="button">
+              Previous
+            </button>
+            <strong>
+              {currentPage} / {pageCount}
+            </strong>
+            <button
+              className="ghost-button compact-button"
+              disabled={currentPage >= pageCount}
+              onClick={() => setPage(currentPage + 1)}
+              type="button"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {draft ? (
+        <div className="drawer-backdrop" role="presentation" onMouseDown={() => setDraft(null)}>
+          <aside className="side-drawer building-drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+            <header className="drawer-header">
+              <div>
+                <div className="eyebrow">Management company</div>
+                <h3>{draft.id.startsWith("new-") ? "New company" : draft.name}</h3>
+              </div>
+              <button className="icon-button" onClick={() => setDraft(null)} title="Close" type="button">
+                <X size={16} />
+              </button>
+            </header>
+            <div className="drawer-body">
+              <section className="editor-form">
+                <div className="form-section-title">Company profile</div>
+                <div className="form-grid dense">
+                  <InputField disabled={!canEdit} label="Name" value={draft.name} onChange={(value) => updateDraft("name", value)} />
+                  <InputField
+                    disabled={!canEdit}
+                    label="Slug"
+                    value={draft.slug}
+                    onChange={(value) => updateDraft("slug", slugify(value))}
+                  />
+                  <InputField
+                    disabled={!canEdit}
+                    label="Website"
+                    value={draft.website ?? ""}
+                    onChange={(value) => updateDraft("website", value || null)}
+                  />
+                  <InputField
+                    disabled={!canEdit}
+                    label="Unit count label"
+                    value={draft.unit_count_label ?? ""}
+                    onChange={(value) => updateDraft("unit_count_label", value || null)}
+                  />
+                  <NumberField
+                    disabled={!canEdit}
+                    label="Estimated units"
+                    value={draft.estimated_unit_count}
+                    onChange={(value) => updateDraft("estimated_unit_count", value == null ? null : Math.round(value))}
+                  />
+                  <InputField
+                    disabled={!canEdit}
+                    label="Key assets"
+                    value={stringArrayToInput(draft.key_assets)}
+                    onChange={(value) => updateDraft("key_assets", toStringArray(value))}
+                  />
+                  <label className="field full">
+                    <span>Notes</span>
+                    <textarea
+                      disabled={!canEdit}
+                      value={draft.notes ?? ""}
+                      onChange={(event) => updateDraft("notes", event.target.value || null)}
+                    />
+                  </label>
+                </div>
+
+                <div className="form-row sticky-actions">
+                  {!draft.id.startsWith("new-") ? (
+                    <button className="danger-button" disabled={!canDelete} onClick={() => deleteCompany(draft)} type="button">
+                      <Trash2 size={16} />
+                      Delete
+                    </button>
+                  ) : null}
+                  <button className="button" disabled={!canEdit || isSaving} onClick={saveCompany} type="button">
+                    <Save size={16} />
+                    {isSaving ? "Saving..." : "Save company"}
+                  </button>
+                </div>
+              </section>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function InputField({
+  disabled,
+  label,
+  value,
+  onChange
+}: {
+  disabled?: boolean;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function NumberField({
+  disabled,
+  label,
+  value,
+  onChange
+}: {
+  disabled?: boolean;
+  label: string;
+  value: number | null;
+  onChange: (value: number | null) => void;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        disabled={disabled}
+        type="number"
+        value={value ?? ""}
+        onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))}
+      />
+    </label>
+  );
+}
+
+function companyPayload(company: ManagementCompany) {
+  return {
+    slug: company.slug || slugify(company.name),
+    name: company.name,
+    website: company.website,
+    key_assets: company.key_assets,
+    unit_count_label: company.unit_count_label,
+    estimated_unit_count: company.estimated_unit_count,
+    notes: company.notes
+  };
+}

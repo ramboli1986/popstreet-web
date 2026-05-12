@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import {
+  BriefcaseBusiness,
   Building2,
   ChevronRight,
   DoorOpen,
@@ -17,12 +18,13 @@ import {
 import { AuthPanel } from "./auth-panel";
 import { AccountsManager } from "./accounts-manager";
 import { BuildingManager } from "./building-manager";
+import { CompanyManager } from "./company-manager";
 import { Dashboard } from "./dashboard";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { canManageAccounts, roleLabel } from "@/lib/format";
 import type { AccountProfile } from "@/lib/types";
 
-type ViewKey = "dashboard" | "building" | "units" | "map" | "accounts";
+type ViewKey = "dashboard" | "building" | "companies" | "units" | "map" | "accounts";
 type AdminAppProps = {
   initialView?: ViewKey;
 };
@@ -30,6 +32,7 @@ type AdminAppProps = {
 const routeByView: Record<ViewKey, string> = {
   dashboard: "/",
   building: "/buildings",
+  companies: "/companies",
   units: "/units",
   map: "/map",
   accounts: "/accounts"
@@ -38,6 +41,7 @@ const routeByView: Record<ViewKey, string> = {
 const pageTitleByView: Record<ViewKey, string> = {
   dashboard: "Overview",
   building: "Buildings",
+  companies: "Companies",
   units: "Units & Deals",
   map: "Map",
   accounts: "Accounts"
@@ -46,6 +50,9 @@ const pageTitleByView: Record<ViewKey, string> = {
 function viewFromPath(pathname: string): ViewKey {
   if (pathname.startsWith("/buildings")) {
     return "building";
+  }
+  if (pathname.startsWith("/companies")) {
+    return "companies";
   }
   if (pathname.startsWith("/units")) {
     return "units";
@@ -174,6 +181,7 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
     () => [
       { key: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
       { key: "building" as const, label: "Buildings", icon: Building2 },
+      { key: "companies" as const, label: "Companies", icon: BriefcaseBusiness },
       { key: "units" as const, label: "Units & Deals", icon: DoorOpen },
       { key: "map" as const, label: "Map", icon: MapPinned },
       { key: "accounts" as const, label: "Accounts", icon: UsersRound, requiresAccountAdmin: true }
@@ -274,7 +282,7 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
           <div className="console-topbar-actions">
             <div className="global-search" aria-hidden="true">
               <Search size={16} />
-              <span>Search buildings, units, addresses...</span>
+              <span>Search buildings, units, companies...</span>
               <kbd>⌘K</kbd>
             </div>
             <span className="env-pill">prod</span>
@@ -310,6 +318,7 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
 
           {view === "dashboard" ? <Dashboard /> : null}
           {view === "building" ? <BuildingManager mode="building" profile={profile} /> : null}
+          {view === "companies" ? <CompanyManager profile={profile} /> : null}
           {view === "units" ? <BuildingManager mode="units" profile={profile} /> : null}
           {view === "map" ? <BuildingManager mode="map" profile={profile} /> : null}
           {view === "accounts" && canManageAccounts(profile?.role) ? <AccountsManager currentProfile={profile} /> : null}

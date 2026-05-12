@@ -87,7 +87,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [unitBedroomFilter, setUnitBedroomFilter] = useState<UnitBedroomFilter>("all");
   const [buildingPage, setBuildingPage] = useState(1);
   const [unitPage, setUnitPage] = useState(1);
-  const [selectedMapAreas, setSelectedMapAreas] = useState<string[]>([]);
+  const [selectedMapArea, setSelectedMapArea] = useState("all");
   const [mapResetSignal, setMapResetSignal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -291,15 +291,12 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   );
 
   useEffect(() => {
-    setSelectedMapAreas((current) => {
-      const availableAreas = mapAreaOptions.map((option) => option.area);
-
-      if (availableAreas.length === 0) {
-        return [];
+    setSelectedMapArea((current) => {
+      if (current === "all") {
+        return current;
       }
 
-      const stillAvailable = current.filter((area) => availableAreas.includes(area));
-      return stillAvailable.length > 0 ? stillAvailable : availableAreas;
+      return mapAreaOptions.some((option) => option.area === current) ? current : "all";
     });
   }, [mapAreaOptions]);
 
@@ -335,8 +332,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     [buildings]
   );
   const visibleMapBuildings = useMemo(
-    () => geocodedBuildings.filter((building) => selectedMapAreas.includes(buildingAreaLabel(building))),
-    [geocodedBuildings, selectedMapAreas]
+    () =>
+      selectedMapArea === "all"
+        ? geocodedBuildings
+        : geocodedBuildings.filter((building) => buildingAreaLabel(building) === selectedMapArea),
+    [geocodedBuildings, selectedMapArea]
   );
 
   const filteredUnits = useMemo(() => {
@@ -597,10 +597,15 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     openAddUnitDialog(building);
   }
 
-  function toggleMapArea(area: string) {
-    setSelectedMapAreas((current) =>
-      current.includes(area) ? current.filter((item) => item !== area) : [...current, area]
-    );
+  function selectMapArea(area: string) {
+    setSelectedMapArea(area);
+    setSelectedBuilding((building) => {
+      if (!building || area === "all" || buildingAreaLabel(building) === area) {
+        return building;
+      }
+
+      return null;
+    });
   }
 
   const pageCopy = {
@@ -640,14 +645,23 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           <div className="map-area-toolbar">
             <span className="map-area-label">Areas:</span>
             <div className="map-area-scroll">
+              <button
+                className={`map-area-chip ${selectedMapArea === "all" ? "active" : ""}`}
+                onClick={() => selectMapArea("all")}
+                style={{ "--area-color": "#64748b" } as CSSProperties}
+                type="button"
+              >
+                <span />
+                All Areas
+              </button>
               {mapAreaOptions.map((option) => {
-                const isActive = selectedMapAreas.includes(option.area);
+                const isActive = selectedMapArea === option.area;
 
                 return (
                   <button
                     className={`map-area-chip ${isActive ? "active" : ""}`}
                     key={option.area}
-                    onClick={() => toggleMapArea(option.area)}
+                    onClick={() => selectMapArea(option.area)}
                     style={{ "--area-color": option.color } as CSSProperties}
                     type="button"
                   >
@@ -657,12 +671,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
                 );
               })}
             </div>
-            <button className="map-area-mini-action" onClick={() => setSelectedMapAreas(mapAreaOptions.map((option) => option.area))} type="button">
-              All
-            </button>
-            <button className="map-area-mini-action" onClick={() => setSelectedMapAreas([])} type="button">
-              None
-            </button>
           </div>
 
           <div className="map-redesign-canvas-frame">

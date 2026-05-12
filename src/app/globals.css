@@ -1382,8 +1382,7 @@ strong {
   padding: 0 18px;
 }
 
-.map-reset-button,
-.map-area-mini-action {
+.map-reset-button {
   border: 0;
   background: transparent;
   color: #262626;

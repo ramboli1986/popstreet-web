@@ -576,9 +576,21 @@ strong {
 }
 
 .table-primary-link {
+  display: inline-flex;
+  align-items: center;
   justify-content: flex-start;
   min-height: 0;
   text-align: left;
+  text-decoration: none;
+}
+
+.table-primary-link:hover {
+  text-decoration: underline;
+}
+
+.table-primary-text {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 .message {
@@ -1819,6 +1831,13 @@ strong {
 
 .drawer-header h3 {
   margin-top: 3px;
+}
+
+.drawer-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 .drawer-body {

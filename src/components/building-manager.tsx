@@ -883,7 +883,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               startIndex={buildingPageMeta.startIndex}
               onArchive={(building) => setBuildingActive(building, false)}
               onDelete={deleteBuilding}
-              onEdit={openBuildingEditor}
               onAddUnit={openAddUnitDialog}
               onOpen={openBuildingEditor}
               onRestore={(building) => setBuildingActive(building, true)}
@@ -937,7 +936,6 @@ function BuildingTable({
   onArchive,
   onAddUnit,
   onDelete,
-  onEdit,
   onOpen,
   onRestore,
   startIndex
@@ -950,7 +948,6 @@ function BuildingTable({
   onArchive: (building: Building) => void;
   onAddUnit: (building: Building) => void;
   onDelete: (building: Building) => void;
-  onEdit: (building: Building) => void;
   onOpen: (building: Building) => void;
   onRestore: (building: Building) => void;
 }) {
@@ -978,6 +975,9 @@ function BuildingTable({
           {buildings.map((building, index) => {
             const metric = metrics.get(building.id);
             const isSelected = selectedBuilding?.id === building.id;
+            const buildingWebsite = building.website;
+            const companyName = building.management_companies?.name ?? building.management_company ?? "N/A";
+            const companyWebsite = building.management_companies?.website ?? null;
 
             return (
               <tr
@@ -994,16 +994,20 @@ function BuildingTable({
               >
                 <td className="row-index">{startIndex + index + 1}</td>
                 <td>
-                  <button
-                    className="table-primary-link"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onOpen(building);
-                    }}
-                    type="button"
-                  >
-                    {building.name}
-                  </button>
+                  {buildingWebsite ? (
+                    <a
+                      className="table-primary-link table-external-link"
+                      href={buildingWebsite}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {building.name}
+                    </a>
+                  ) : (
+                    <span className="table-primary-text">{building.name}</span>
+                  )}
                   <div className="table-subtext">{building.address}</div>
                 </td>
                 <td>
@@ -1013,9 +1017,22 @@ function BuildingTable({
                   </div>
                 </td>
                 <td>
-                  <strong>{building.management_companies?.name ?? building.management_company ?? "N/A"}</strong>
-                  {building.management_companies?.website || building.website ? (
-                    <div className="table-subtext">{building.management_companies?.website ?? building.website}</div>
+                  {companyWebsite ? (
+                    <a
+                      className="table-primary-link table-external-link"
+                      href={companyWebsite}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {companyName}
+                    </a>
+                  ) : (
+                    <strong>{companyName}</strong>
+                  )}
+                  {companyWebsite ? (
+                    <div className="table-subtext">{companyWebsite}</div>
                   ) : null}
                 </td>
                 <td>
@@ -1036,20 +1053,9 @@ function BuildingTable({
                       disabled={!canEdit}
                       onClick={(event) => {
                         event.stopPropagation();
-                        onEdit(building);
-                      }}
-                      type="button"
-                    >
-                      <Pencil size={14} />
-                      Edit
-                    </button>
-                    <button
-                      className="mini-action"
-                      disabled={!canEdit}
-                      onClick={(event) => {
-                        event.stopPropagation();
                         onAddUnit(building);
                       }}
+                      onKeyDown={(event) => event.stopPropagation()}
                       type="button"
                     >
                       <Plus size={14} />
@@ -1063,6 +1069,7 @@ function BuildingTable({
                           event.stopPropagation();
                           onArchive(building);
                         }}
+                        onKeyDown={(event) => event.stopPropagation()}
                         title="Archive"
                         type="button"
                       >
@@ -1076,6 +1083,7 @@ function BuildingTable({
                           event.stopPropagation();
                           onRestore(building);
                         }}
+                        onKeyDown={(event) => event.stopPropagation()}
                         title="Activate"
                         type="button"
                       >
@@ -1089,6 +1097,7 @@ function BuildingTable({
                         event.stopPropagation();
                         onDelete(building);
                       }}
+                      onKeyDown={(event) => event.stopPropagation()}
                       title="Delete"
                       type="button"
                     >
@@ -1108,23 +1117,19 @@ function BuildingTable({
 function BuildingEditor({
   canEdit,
   draft,
-  isSaving,
   managementCompanies,
   neighborhoods,
   updateDraft,
   onArchive,
-  onRestore,
-  onSave
+  onRestore
 }: {
   canEdit: boolean;
   draft: Building;
-  isSaving: boolean;
   managementCompanies: ManagementCompany[];
   neighborhoods: Neighborhood[];
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
   onArchive: () => void;
   onRestore: () => void;
-  onSave: () => void;
 }) {
   return (
     <section className="editor-form">
@@ -1259,9 +1264,9 @@ function BuildingEditor({
         </label>
       </div>
 
-      <div className="form-row sticky-actions">
-        {!draft.id.startsWith("new-") ? (
-          draft.is_active ? (
+      {!draft.id.startsWith("new-") ? (
+        <div className="form-row sticky-actions">
+          {draft.is_active ? (
             <button className="ghost-button" disabled={!canEdit} onClick={onArchive} type="button">
               <Archive size={16} />
               Archive
@@ -1271,13 +1276,9 @@ function BuildingEditor({
               <Check size={16} />
               Activate
             </button>
-          )
-        ) : null}
-        <button className="button" disabled={!canEdit || isSaving} onClick={onSave} type="button">
-          <Save size={16} />
-          {isSaving ? "Saving..." : "Save building"}
-        </button>
-      </div>
+          )}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -1313,20 +1314,24 @@ function BuildingEditorDialog({
             <div className="eyebrow">Building profile</div>
             <h3>{draft.id.startsWith("new-") ? "New building" : draft.name}</h3>
           </div>
-          <button className="icon-button" onClick={onClose} title="Close" type="button">
-            <X size={16} />
-          </button>
+          <div className="drawer-header-actions">
+            <button className="button compact-button" disabled={!canEdit || isSaving} onClick={onSave} type="button">
+              <Save size={15} />
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+            <button className="icon-button" onClick={onClose} title="Close" type="button">
+              <X size={16} />
+            </button>
+          </div>
         </header>
         <div className="drawer-body">
           <BuildingEditor
             canEdit={canEdit}
             draft={draft}
-            isSaving={isSaving}
             managementCompanies={managementCompanies}
             neighborhoods={neighborhoods}
             onArchive={onArchive}
             onRestore={onRestore}
-            onSave={onSave}
             updateDraft={updateDraft}
           />
         </div>

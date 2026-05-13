@@ -24,6 +24,7 @@ import {
   stringArrayToInput,
   toStringArray
 } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 import type {
   AccountProfile,
   Building,
@@ -78,6 +79,8 @@ const mapAreaPalette = [
 ];
 
 export function BuildingManager({ profile, mode }: BuildingManagerProps) {
+  const { language, t } = useI18n();
+  const locale = language === "zh" ? "zh-CN" : "en-US";
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [managementCompanies, setManagementCompanies] = useState<ManagementCompany[]>([]);
@@ -634,19 +637,26 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
   const pageCopy = {
     building: {
-      eyebrow: "Buildings",
-      title: `Inventory · ${buildings.length.toLocaleString()} properties`,
-      subtitle: `${activeBuildingCount.toLocaleString()} active · ${(buildings.length - activeBuildingCount).toLocaleString()} archived · ${filteredAvailableUnitCount.toLocaleString()} available units`
+      eyebrow: t("manager.buildingsEyebrow"),
+      title: t("manager.buildingsTitle", { count: buildings.length.toLocaleString(locale) }),
+      subtitle: t("manager.buildingsSubtitle", {
+        active: activeBuildingCount.toLocaleString(locale),
+        archived: (buildings.length - activeBuildingCount).toLocaleString(locale),
+        available: filteredAvailableUnitCount.toLocaleString(locale)
+      })
     },
     units: {
-      eyebrow: "Daily deals",
-      title: "Units & Deals",
-      subtitle: `${filteredUnitStats.total.toLocaleString()} matching units · ${filteredUnitStats.available.toLocaleString()} available right now`
+      eyebrow: t("manager.unitsEyebrow"),
+      title: t("manager.unitsTitle"),
+      subtitle: t("manager.unitsSubtitle", {
+        total: filteredUnitStats.total.toLocaleString(locale),
+        available: filteredUnitStats.available.toLocaleString(locale)
+      })
     },
     map: {
-      eyebrow: "Geo & coordinates",
-      title: "Map editor",
-      subtitle: "View buildings on one light map. Pin colors are grouped by area and selected pins can be edited."
+      eyebrow: t("manager.mapEyebrow"),
+      title: t("manager.mapTitle"),
+      subtitle: t("manager.mapSubtitle")
     }
   }[mode];
 
@@ -659,15 +669,18 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         <section className="map-redesign-shell">
           <header className="map-redesign-statusbar">
             <span>
-              {visibleMapBuildings.length.toLocaleString()} of {geocodedBuildings.length.toLocaleString()} buildings geolocated
+              {t("manager.geolocated", {
+                visible: visibleMapBuildings.length.toLocaleString(locale),
+                total: geocodedBuildings.length.toLocaleString(locale)
+              })}
             </span>
             <button className="map-reset-button" onClick={() => setMapResetSignal((value) => value + 1)} type="button">
-              Reset map view
+              {t("manager.resetMapView")}
             </button>
           </header>
 
           <div className="map-area-toolbar">
-            <span className="map-area-label">Areas:</span>
+            <span className="map-area-label">{t("manager.areas")}</span>
             <div className="map-area-scroll">
               <button
                 className={`map-area-chip ${selectedMapArea === "all" ? "active" : ""}`}
@@ -676,7 +689,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
                 type="button"
               >
                 <span />
-                All Areas
+                {t("manager.allAreas")}
               </button>
               {mapAreaOptions.map((option) => {
                 const isActive = selectedMapArea === option.area;
@@ -719,10 +732,10 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
                 </small>
               </div>
               <button className="ghost-button compact-button" onClick={() => openBuildingEditor(selectedBuilding)} type="button">
-                Edit
+                {t("common.edit")}
               </button>
               <button className="button compact-button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
-                Save
+                {t("common.save")}
               </button>
             </aside>
           ) : null}
@@ -757,12 +770,12 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         <div className="page-actions">
           <button className="ghost-button" disabled={isLoading} onClick={refreshAll} type="button">
             <RefreshCcw size={16} />
-            Refresh
+            {t("common.refresh")}
           </button>
           {canEdit && mode === "building" ? (
             <button className="button dark-button" onClick={createBuildingDraft} type="button">
               <Plus size={16} />
-              New building
+              {t("manager.newBuilding")}
             </button>
           ) : null}
         </div>
@@ -770,20 +783,20 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
       {error ? <div className="message error compact-message">{error}</div> : null}
       {message ? <div className="message compact-message">{message}</div> : null}
-      {!canEdit ? <div className="message compact-message">Viewer role is read-only.</div> : null}
+      {!canEdit ? <div className="message compact-message">{t("manager.viewerReadOnly")}</div> : null}
 
       {mode === "units" ? (
         <section className="ops-toolbar unit-ops-toolbar">
           <label className="search-box">
             <Search size={16} />
             <input
-              placeholder="Search unit, building, address..."
+              placeholder={t("manager.searchUnit")}
               value={unitSearch}
               onChange={(event) => setUnitSearch(event.target.value)}
             />
           </label>
           <select value={unitBuildingFilter} onChange={(event) => setUnitBuildingFilter(event.target.value)}>
-            <option value="all">All buildings</option>
+            <option value="all">{t("manager.allBuildings")}</option>
             {buildings.map((building) => (
               <option key={building.id} value={building.id}>
                 {building.name}
@@ -791,7 +804,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             ))}
           </select>
           <select value={unitStatusFilter} onChange={(event) => setUnitStatusFilter(event.target.value as UnitStatusFilter)}>
-            <option value="all">All status</option>
+            <option value="all">{t("manager.allStatus")}</option>
             {listingStatuses.map((status) => (
               <option key={status} value={status}>
                 {status}
@@ -799,7 +812,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             ))}
           </select>
           <select value={unitBedroomFilter} onChange={(event) => setUnitBedroomFilter(event.target.value as UnitBedroomFilter)}>
-            <option value="all">All layouts</option>
+            <option value="all">{t("manager.allLayouts")}</option>
             <option value="0">Studio</option>
             <option value="1">1 bed</option>
             <option value="2">2 bed</option>
@@ -807,16 +820,16 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           </select>
           <div className="toolbar-stat">
             <strong>{filteredUnitStats.total}</strong>
-            <span>units</span>
+            <span>{t("common.units")}</span>
           </div>
           <div className="toolbar-stat">
             <strong>{filteredUnitStats.available}</strong>
-            <span>available</span>
+            <span>{t("common.available")}</span>
           </div>
           {canEdit ? (
             <button className="button" disabled={buildings.length === 0} onClick={openAddUnitFromUnitsPage} type="button">
               <Plus size={16} />
-              Add unit
+              {t("manager.addUnit")}
             </button>
           ) : null}
         </section>
@@ -825,18 +838,18 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           <label className="search-box">
             <Search size={16} />
             <input
-              placeholder="Search name, address, area..."
+              placeholder={t("manager.searchBuilding")}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
           </label>
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-            <option value="all">All status</option>
-            <option value="active">Active only</option>
-            <option value="archived">Archived only</option>
+            <option value="all">{t("manager.allStatus")}</option>
+            <option value="active">{t("manager.activeOnly")}</option>
+            <option value="archived">{t("manager.archivedOnly")}</option>
           </select>
           <select value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
-            <option value="all">All locations</option>
+            <option value="all">{t("manager.allLocations")}</option>
             {areaOptions.map((area) => (
               <option key={area} value={area}>
                 {area}
@@ -845,11 +858,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           </select>
           <div className="toolbar-stat">
             <strong>{filteredBuildings.length}</strong>
-            <span>buildings</span>
+            <span>{t("common.buildings")}</span>
           </div>
           <div className="toolbar-stat">
             <strong>{filteredAvailableUnitCount}</strong>
-            <span>available units</span>
+            <span>{t("manager.availableUnits")}</span>
           </div>
         </section>
       )}
@@ -870,10 +883,12 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           <section className="data-panel building-list-panel">
             <div className="panel-heading">
               <div>
-                <div className="eyebrow">Building list</div>
-                <h3>Fast query and edit</h3>
+                <div className="eyebrow">{t("manager.buildingList")}</div>
+                <h3>{t("manager.fastQueryEdit")}</h3>
               </div>
-              <span className="count-pill">{buildings.length} total</span>
+              <span className="count-pill">
+                {buildings.length.toLocaleString(locale)} {t("common.total")}
+              </span>
             </div>
             <BuildingTable
               buildings={paginatedBuildings}
@@ -888,7 +903,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               onRestore={(building) => setBuildingActive(building, true)}
             />
             <PaginationControls
-              label="buildings"
+              label={t("common.buildings")}
               pageMeta={buildingPageMeta}
               onPageChange={setBuildingPage}
             />

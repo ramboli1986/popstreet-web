@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Building2, CircleSlash, DollarSign, RefreshCcw, Sparkles, Tag } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatDate, formatMoneyFromCents } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 import type { Building, UnitListing } from "@/lib/types";
 
 type DashboardDeal = Pick<
@@ -27,6 +28,7 @@ type DashboardDeal = Pick<
 };
 
 export function Dashboard() {
+  const { language, t } = useI18n();
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [buildingCount, setBuildingCount] = useState(0);
   const [activeBuildingCount, setActiveBuildingCount] = useState(0);
@@ -151,29 +153,32 @@ export function Dashboard() {
     };
   }, [activeBuildingCount, buildingCount, listings, unitsCount]);
 
-  const trendBuckets = useMemo(() => buildTrendBuckets(listings), [listings]);
+  const locale = language === "zh" ? "zh-CN" : "en-US";
+  const trendBuckets = useMemo(() => buildTrendBuckets(listings, locale), [listings, locale]);
   const areaBreakdown = useMemo(() => buildAreaBreakdown(topDeals), [topDeals]);
 
   return (
     <div className="dashboard-page">
       <div className="page-hero">
         <div>
-          <div className="eyebrow">Overview</div>
-          <h1>Today&apos;s market pulse</h1>
+          <div className="eyebrow">{t("dashboard.eyebrow")}</div>
+          <h1>{t("dashboard.title")}</h1>
           <p>
-            {stats.totalBuildings.toLocaleString()} buildings tracked · {stats.availableListings.toLocaleString()} available
-            listings in the latest sync
+            {t("dashboard.subtitle", {
+              buildings: stats.totalBuildings.toLocaleString(locale),
+              listings: stats.availableListings.toLocaleString(locale)
+            })}
           </p>
         </div>
         <div className="page-actions">
           <div className="segmented-control" aria-hidden="true">
-            <span className="active">Today</span>
-            <span>7d</span>
-            <span>30d</span>
+            <span className="active">{t("dashboard.today")}</span>
+            <span>{t("dashboard.sevenDays")}</span>
+            <span>{t("dashboard.thirtyDays")}</span>
           </div>
           <button className="button dark-button" disabled={isLoading} onClick={loadDashboard} type="button">
             <RefreshCcw size={16} />
-            Refresh
+            {t("common.refresh")}
           </button>
         </div>
       </div>
@@ -183,39 +188,39 @@ export function Dashboard() {
       <section className="kpi-strip">
         <MetricCard
           icon={<Building2 size={17} />}
-          label="Active buildings"
-          value={`${stats.activeBuildings.toLocaleString()}`}
-          suffix={`/ ${stats.totalBuildings.toLocaleString()}`}
+          label={t("dashboard.activeBuildings")}
+          value={`${stats.activeBuildings.toLocaleString(locale)}`}
+          suffix={`/ ${stats.totalBuildings.toLocaleString(locale)}`}
           trend="up"
-          trendText="live inventory"
+          trendText={t("dashboard.liveInventory")}
         />
         <MetricCard
           icon={<Tag size={17} />}
-          label="Active deals"
-          value={stats.availableListings.toLocaleString()}
+          label={t("dashboard.activeDeals")}
+          value={stats.availableListings.toLocaleString(locale)}
           trend="up"
-          trendText="available now"
+          trendText={t("dashboard.availableNow")}
         />
         <MetricCard
           icon={<Sparkles size={17} />}
-          label="New today"
-          value={`+${stats.newToday.toLocaleString()}`}
+          label={t("dashboard.newToday")}
+          value={`+${stats.newToday.toLocaleString(locale)}`}
           tone="brand"
-          trendText="fresh listings"
+          trendText={t("dashboard.freshListings")}
         />
         <MetricCard
           icon={<CircleSlash size={17} />}
-          label="Off-market today"
-          value={`-${stats.offMarketToday.toLocaleString()}`}
+          label={t("dashboard.offMarketToday")}
+          value={`-${stats.offMarketToday.toLocaleString(locale)}`}
           tone="danger"
-          trendText="removed today"
+          trendText={t("dashboard.removedToday")}
         />
         <MetricCard
           icon={<DollarSign size={17} />}
-          label="Median net rent"
+          label={t("dashboard.medianNetRent")}
           value={formatMoneyFromCents(stats.medianNetPrice ?? stats.minNetPrice)}
           trend="down"
-          trendText="current available"
+          trendText={t("dashboard.currentAvailable")}
         />
       </section>
 
@@ -223,12 +228,12 @@ export function Dashboard() {
         <article className="analytics-card activity-card">
           <div className="card-heading">
             <div>
-              <div className="eyebrow">Daily activity</div>
-              <h3>New listings vs went unavailable</h3>
+              <div className="eyebrow">{t("dashboard.dailyActivity")}</div>
+              <h3>{t("dashboard.newVsUnavailable")}</h3>
             </div>
             <div className="chart-legend">
-              <span><i className="legend-new" />New</span>
-              <span><i className="legend-off" />Unavailable</span>
+              <span><i className="legend-new" />{t("dashboard.new")}</span>
+              <span><i className="legend-off" />{t("common.unavailable")}</span>
             </div>
           </div>
           <ActivityBars buckets={trendBuckets} />
@@ -237,15 +242,15 @@ export function Dashboard() {
         <article className="analytics-card top-deals-card">
           <div className="card-heading">
             <div>
-              <div className="eyebrow">Hot</div>
-              <h3>Top deals right now</h3>
+              <div className="eyebrow">{t("dashboard.hot")}</div>
+              <h3>{t("dashboard.topDealsNow")}</h3>
             </div>
-            <span className="count-pill">Live</span>
+            <span className="count-pill">{t("dashboard.live")}</span>
           </div>
 
           <div className="top-deal-list">
             {topDeals.map((deal) => (
-              <TopDealRow deal={deal} key={deal.id} />
+              <TopDealRow deal={deal} key={deal.id} t={t} />
             ))}
           </div>
         </article>
@@ -255,10 +260,10 @@ export function Dashboard() {
         <article className="analytics-card">
           <div className="card-heading">
             <div>
-              <div className="eyebrow">Recently updated</div>
-              <h3>Buildings</h3>
+              <div className="eyebrow">{t("dashboard.recentlyUpdated")}</div>
+              <h3>{t("common.buildings")}</h3>
             </div>
-            <span className="count-pill">{buildings.length} latest</span>
+            <span className="count-pill">{t("dashboard.latest", { count: buildings.length.toLocaleString(locale) })}</span>
           </div>
 
           <div className="recent-building-list">
@@ -271,7 +276,7 @@ export function Dashboard() {
                   </p>
                 </div>
                 <span className={`status-pill ${building.is_active ? "active" : "suspended"}`}>
-                  {building.is_active ? "Active" : "Archived"}
+                  {building.is_active ? t("common.active") : t("common.archived")}
                 </span>
                 <span className="muted">{formatDate(building.updated_at)}</span>
               </div>
@@ -282,17 +287,17 @@ export function Dashboard() {
         <article className="analytics-card">
           <div className="card-heading">
             <div>
-              <div className="eyebrow">Neighborhood mix</div>
-              <h3>Deal concentration</h3>
+              <div className="eyebrow">{t("dashboard.neighborhoodMix")}</div>
+              <h3>{t("dashboard.dealConcentration")}</h3>
             </div>
-            <span className="count-pill">Top deals</span>
+            <span className="count-pill">{t("dashboard.topDeals")}</span>
           </div>
           <div className="breakdown-list">
             {areaBreakdown.map((row) => (
               <div className="breakdown-row" key={row.area}>
                 <div>
                   <strong>{row.area}</strong>
-                  <span>{row.count} deal{row.count === 1 ? "" : "s"}</span>
+                  <span>{t("dashboard.dealCount", { count: row.count.toLocaleString(locale) })}</span>
                 </div>
                 <div className="breakdown-track">
                   <span style={{ width: `${row.percent}%` }} />
@@ -306,7 +311,9 @@ export function Dashboard() {
   );
 }
 
-function TopDealRow({ deal }: { deal: DashboardDeal }) {
+type Translate = (key: string, params?: Record<string, number | string>) => string;
+
+function TopDealRow({ deal, t }: { deal: DashboardDeal; t: Translate }) {
   const unit = deal.units;
   const building = unit?.buildings;
   const discountPercent =
@@ -314,31 +321,43 @@ function TopDealRow({ deal }: { deal: DashboardDeal }) {
       ? Math.round(((deal.market_price_cents - deal.net_price_cents) / deal.market_price_cents) * 100)
       : null;
   const layout = unit
-    ? `${unit.bedroom_count === 0 ? "Studio" : `${unit.bedroom_count} bd`} / ${unit.bathroom_count} ba${
-        unit.sqft ? ` / ${unit.sqft.toLocaleString()} sqft` : ""
-      }`
-    : "Layout missing";
+    ? `${unit.bedroom_count === 0 ? t("dashboard.studio") : `${unit.bedroom_count} ${t("dashboard.bedShort")}`} / ${
+        unit.bathroom_count
+      } ${t("dashboard.bathShort")}${unit.sqft ? ` / ${unit.sqft.toLocaleString()} ${t("dashboard.sqft")}` : ""}`
+    : t("dashboard.layoutMissing");
+
+  const defaultDealLabel = t("dashboard.monthsFreeShort", {
+    count: deal.free_months.toLocaleString()
+  });
+
+  const cashbackLabel =
+    deal.cash_back_cents > 0 ? ` · ${formatMoneyFromCents(deal.cash_back_cents)} ${t("common.back")}` : "";
 
   return (
     <div className="top-deal-row">
       <span className="deal-rank" />
       <div>
-        <strong>{building?.name ?? "Unknown building"}</strong>
+        <strong>{building?.name ?? t("dashboard.unknownBuilding")}</strong>
         <p className="muted">
-          Unit {unit?.unit_number ?? "N/A"} · {building ? `${building.area ?? building.city}, ${building.state}` : "No location"}
+          {t("common.unit")} {unit?.unit_number ?? t("common.na")} ·{" "}
+          {building ? `${building.area ?? building.city}, ${building.state}` : t("dashboard.noLocation")}
         </p>
       </div>
       <div className="deal-layout">{layout}</div>
       <div className="deal-price">
         <strong>{formatMoneyFromCents(deal.net_price_cents)}</strong>
-        <span>{deal.market_price_cents ? `${formatMoneyFromCents(deal.market_price_cents)} market` : "No market price"}</span>
+        <span>
+          {deal.market_price_cents
+            ? `${formatMoneyFromCents(deal.market_price_cents)} ${t("common.market")}`
+            : t("dashboard.noMarketPrice")}
+        </span>
       </div>
       <div className="deal-chip">
-        {deal.lease_deal || `${deal.free_months.toLocaleString()} mo free`}
-        {deal.cash_back_cents > 0 ? ` · ${formatMoneyFromCents(deal.cash_back_cents)} back` : ""}
+        {deal.lease_deal || defaultDealLabel}
+        {cashbackLabel}
       </div>
       <div className="deal-meta">
-        {discountPercent == null ? "N/A" : `${discountPercent}% off`}
+        {discountPercent == null ? t("common.na") : t("dashboard.percentOff", { percent: discountPercent })}
         <span>{formatDate(deal.updated_at)}</span>
       </div>
     </div>
@@ -405,7 +424,7 @@ type TrendBucket = {
   offMarket: number;
 };
 
-function buildTrendBuckets(listings: UnitListing[]): TrendBucket[] {
+function buildTrendBuckets(listings: UnitListing[], locale: string): TrendBucket[] {
   return Array.from({ length: 14 }, (_item, index) => {
     const date = new Date();
     date.setDate(date.getDate() - (13 - index));
@@ -416,7 +435,7 @@ function buildTrendBuckets(listings: UnitListing[]): TrendBucket[] {
     const end = nextDate.getTime();
 
     return {
-      label: new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short" }).format(date),
+      label: new Intl.DateTimeFormat(locale, { day: "numeric", month: "short" }).format(date),
       newListings: listings.filter((listing) => {
         const listedAt = new Date(listing.listed_at).getTime();
         return listedAt >= start && listedAt < end;

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ExternalLink, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { canEditInventory, canManageAccounts, formatDate, slugify, stringArrayToInput, toStringArray } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 import type { AccountProfile, ManagementCompany } from "@/lib/types";
 
 type CompanyManagerProps = {
@@ -18,6 +19,8 @@ type BuildingCompanyLink = {
 const companyPageSize = 25;
 
 export function CompanyManager({ profile }: CompanyManagerProps) {
+  const { language, t } = useI18n();
+  const locale = language === "zh" ? "zh-CN" : "en-US";
   const [companies, setCompanies] = useState<ManagementCompany[]>([]);
   const [buildingLinks, setBuildingLinks] = useState<BuildingCompanyLink[]>([]);
   const [draft, setDraft] = useState<ManagementCompany | null>(null);
@@ -153,7 +156,7 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
       return [...withoutSaved, savedCompany].sort((first, second) => first.name.localeCompare(second.name));
     });
     setDraft(null);
-    setMessage(isNew ? "Management company created." : "Management company saved.");
+    setMessage(isNew ? t("companies.created") : t("companies.saved"));
   }
 
   async function deleteCompany(company: ManagementCompany) {
@@ -187,22 +190,20 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
       )
     );
     setDraft((current) => (current?.id === company.id ? null : current));
-    setMessage("Management company deleted.");
+    setMessage(t("companies.deleted"));
   }
 
   return (
     <>
       <div className="page-hero manager-hero">
         <div>
-          <div className="eyebrow">Management companies</div>
-          <h1>Company list · {companies.length.toLocaleString()} records</h1>
-          <p>
-            Search, edit, add, and remove management companies. Buildings can link to one company record for cleaner data.
-          </p>
+          <div className="eyebrow">{t("companies.eyebrow")}</div>
+          <h1>{t("companies.title", { count: companies.length.toLocaleString(locale) })}</h1>
+          <p>{t("companies.subtitle")}</p>
         </div>
         <button className="button" disabled={!canEdit} onClick={createCompanyDraft} type="button">
           <Plus size={16} />
-          Add company
+          {t("companies.add")}
         </button>
       </div>
 
@@ -213,45 +214,47 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
         <label className="search-field">
           <Search size={16} />
           <input
-            placeholder="Search company, website, assets..."
+            placeholder={t("companies.search")}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
         </label>
         <div className="toolbar-stat">
           <strong>{filteredCompanies.length}</strong>
-          <span>companies</span>
+          <span>{t("companies.companies")}</span>
         </div>
         <div className="toolbar-stat">
           <strong>{buildingLinks.filter((building) => building.management_company_id).length}</strong>
-          <span>linked buildings</span>
+          <span>{t("companies.linkedBuildings")}</span>
         </div>
       </section>
 
       <section className="data-panel building-list-panel">
         <div className="panel-heading">
           <div>
-            <div className="eyebrow">Company list</div>
-            <h3>Fast query and edit</h3>
+            <div className="eyebrow">{t("companies.list")}</div>
+            <h3>{t("manager.fastQueryEdit")}</h3>
           </div>
-          <span className="count-pill">{isLoading ? "Loading..." : `${companies.length} total`}</span>
+          <span className="count-pill">
+            {isLoading ? t("common.loading") : `${companies.length.toLocaleString(locale)} ${t("common.total")}`}
+          </span>
         </div>
 
         {paginatedCompanies.length === 0 ? (
-          <div className="empty-state">No management companies found.</div>
+          <div className="empty-state">{t("companies.empty")}</div>
         ) : (
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
                 <tr>
                   <th>No.</th>
-                  <th>Company</th>
-                  <th>Website</th>
-                  <th>Key assets</th>
-                  <th>Units</th>
-                  <th>Buildings</th>
-                  <th>Updated</th>
-                  <th>Actions</th>
+                  <th>{t("companies.company")}</th>
+                  <th>{t("companies.website")}</th>
+                  <th>{t("companies.keyAssets")}</th>
+                  <th>{t("common.units")}</th>
+                  <th>{t("common.buildings")}</th>
+                  <th>{t("companies.updated")}</th>
+                  <th>{t("companies.actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -274,19 +277,21 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
                     <td>
                       {company.website ? (
                         <a className="table-primary-link muted" href={company.website} rel="noreferrer" target="_blank">
-                          Website <ExternalLink size={13} />
+                          {t("companies.website")} <ExternalLink size={13} />
                         </a>
                       ) : (
-                        <span className="table-subtext">N/A</span>
+                        <span className="table-subtext">{t("common.na")}</span>
                       )}
                     </td>
                     <td>
-                      <span>{company.key_assets.slice(0, 2).join(", ") || "N/A"}</span>
+                      <span>{company.key_assets.slice(0, 2).join(", ") || t("common.na")}</span>
                       {company.key_assets.length > 2 ? (
-                        <div className="table-subtext">+{company.key_assets.length - 2} more</div>
+                        <div className="table-subtext">
+                          {t("companies.more", { count: company.key_assets.length - 2 })}
+                        </div>
                       ) : null}
                     </td>
-                    <td>{company.unit_count_label ?? company.estimated_unit_count?.toLocaleString() ?? "N/A"}</td>
+                    <td>{company.unit_count_label ?? company.estimated_unit_count?.toLocaleString(locale) ?? t("common.na")}</td>
                     <td>{linkedBuildingCounts.get(company.id) ?? 0}</td>
                     <td>{formatDate(company.updated_at)}</td>
                     <td>
@@ -301,7 +306,7 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
                           type="button"
                         >
                           <Pencil size={14} />
-                          Edit
+                          {t("common.edit")}
                         </button>
                         <button
                           className="icon-button danger"
@@ -327,12 +332,16 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
         <div className="pagination-bar">
           <span>
             {filteredCompanies.length === 0
-              ? "No companies"
-              : `Showing ${startIndex + 1}-${Math.min(startIndex + companyPageSize, filteredCompanies.length)} of ${filteredCompanies.length} companies`}
+              ? t("companies.noCompanies")
+              : t("companies.showing", {
+                  from: startIndex + 1,
+                  to: Math.min(startIndex + companyPageSize, filteredCompanies.length),
+                  total: filteredCompanies.length.toLocaleString(locale)
+                })}
           </span>
           <div className="pagination-actions">
             <button className="ghost-button compact-button" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)} type="button">
-              Previous
+              {t("companies.previous")}
             </button>
             <strong>
               {currentPage} / {pageCount}
@@ -343,7 +352,7 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
               onClick={() => setPage(currentPage + 1)}
               type="button"
             >
-              Next
+              {t("companies.next")}
             </button>
           </div>
         </div>

@@ -12,19 +12,22 @@ import {
   LogOut,
   MapPinned,
   Search,
+  Settings2,
   ShieldCheck,
   UsersRound
 } from "lucide-react";
 import { AuthPanel } from "./auth-panel";
 import { AccountsManager } from "./accounts-manager";
+import { AIConfigPage } from "./ai-config-page";
 import { BuildingManager } from "./building-manager";
 import { CompanyManager } from "./company-manager";
 import { Dashboard } from "./dashboard";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
-import { canManageAccounts, roleLabel } from "@/lib/format";
+import { canManageAccounts } from "@/lib/format";
+import { I18nProvider, useI18n } from "@/lib/i18n";
 import type { AccountProfile } from "@/lib/types";
 
-type ViewKey = "dashboard" | "building" | "companies" | "units" | "map" | "accounts";
+type ViewKey = "dashboard" | "building" | "companies" | "units" | "map" | "aiConfig" | "accounts";
 type AdminAppProps = {
   initialView?: ViewKey;
 };
@@ -35,16 +38,8 @@ const routeByView: Record<ViewKey, string> = {
   companies: "/companies",
   units: "/units",
   map: "/map",
+  aiConfig: "/ai-config",
   accounts: "/accounts"
-};
-
-const pageTitleByView: Record<ViewKey, string> = {
-  dashboard: "Overview",
-  building: "Buildings",
-  companies: "Companies",
-  units: "Units & Deals",
-  map: "Map",
-  accounts: "Accounts"
 };
 
 function viewFromPath(pathname: string): ViewKey {
@@ -59,6 +54,9 @@ function viewFromPath(pathname: string): ViewKey {
   }
   if (pathname.startsWith("/map")) {
     return "map";
+  }
+  if (pathname.startsWith("/ai-config")) {
+    return "aiConfig";
   }
   if (pathname.startsWith("/accounts")) {
     return "accounts";
@@ -76,8 +74,17 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 }
 
 export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
+  return (
+    <I18nProvider>
+      <AdminAppContent initialView={initialView} />
+    </I18nProvider>
+  );
+}
+
+function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { language, setLanguage, t } = useI18n();
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [view, setView] = useState<ViewKey>(initialView);
@@ -154,7 +161,7 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
         supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
         setSession(null);
         setProfile(null);
-        setMessage(sessionError instanceof Error ? sessionError.message : "Could not restore the saved session.");
+        setMessage(sessionError instanceof Error ? sessionError.message : t("shell.restoreSessionFailed"));
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -175,18 +182,19 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [loadProfile]);
+  }, [loadProfile, t]);
 
   const navItems = useMemo(
     () => [
-      { key: "dashboard" as const, label: "Dashboard", icon: LayoutDashboard },
-      { key: "building" as const, label: "Buildings", icon: Building2 },
-      { key: "companies" as const, label: "Companies", icon: BriefcaseBusiness },
-      { key: "units" as const, label: "Units & Deals", icon: DoorOpen },
-      { key: "map" as const, label: "Map", icon: MapPinned },
-      { key: "accounts" as const, label: "Accounts", icon: UsersRound, requiresAccountAdmin: true }
+      { key: "dashboard" as const, label: t("nav.dashboard"), icon: LayoutDashboard },
+      { key: "building" as const, label: t("nav.building"), icon: Building2 },
+      { key: "companies" as const, label: t("nav.companies"), icon: BriefcaseBusiness },
+      { key: "units" as const, label: t("nav.units"), icon: DoorOpen },
+      { key: "map" as const, label: t("nav.map"), icon: MapPinned },
+      { key: "aiConfig" as const, label: t("nav.aiConfig"), icon: Settings2 },
+      { key: "accounts" as const, label: t("nav.accounts"), icon: UsersRound, requiresAccountAdmin: true }
     ],
-    []
+    [t]
   );
 
   async function claimFirstAdmin() {
@@ -199,7 +207,7 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
     }
 
     setProfile(data as AccountProfile);
-    setMessage("This account is now the first super admin.");
+    setMessage(t("shell.firstAdminClaimed"));
   }
 
   async function signOut() {
@@ -211,7 +219,7 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
   if (isLoading) {
     return (
       <main className="auth-page">
-        <div className="message">Loading PopStreet Admin...</div>
+        <div className="message">{t("shell.loading")}</div>
       </main>
     );
   }
@@ -235,12 +243,12 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
           <div className="brand-mark">P</div>
           <div>
             <div className="brand-name">PopStreet</div>
-            <div className="brand-kicker">Admin Console</div>
+            <div className="brand-kicker">{t("shell.adminConsole")}</div>
           </div>
         </div>
 
         <nav className="sidebar-nav" aria-label="Admin navigation">
-          <div className="sidebar-section-label">Workspace</div>
+          <div className="sidebar-section-label">{t("shell.workspace")}</div>
           {navItems
             .filter((item) => !item.requiresAccountAdmin || canManageAccounts(profile?.role))
             .map((item) => {
@@ -265,41 +273,57 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
         <div className="sidebar-health">
           <div>
             <span className="health-dot" />
-            Data sources healthy
+            {t("shell.dataSourcesHealthy")}
           </div>
-          <small>Supabase live</small>
+          <small>{t("shell.supabaseLive")}</small>
         </div>
       </aside>
 
       <div className="console-main">
         <header className="console-topbar">
           <div className="breadcrumb-row">
-            <span>Workspace</span>
+            <span>{t("shell.workspace")}</span>
             <ChevronRight size={14} />
-            <strong>{pageTitleByView[view]}</strong>
+            <strong>{t(`views.${view}`)}</strong>
           </div>
 
           <div className="console-topbar-actions">
             <div className="global-search" aria-hidden="true">
               <Search size={16} />
-              <span>Search buildings, units, companies...</span>
+              <span>{t("shell.globalSearch")}</span>
               <kbd>⌘K</kbd>
             </div>
-            <span className="env-pill">prod</span>
+            <div className="language-switch" aria-label={t("shell.language")}>
+              <button
+                className={language === "en" ? "active" : ""}
+                onClick={() => setLanguage("en")}
+                type="button"
+              >
+                {t("shell.english")}
+              </button>
+              <button
+                className={language === "zh" ? "active" : ""}
+                onClick={() => setLanguage("zh")}
+                type="button"
+              >
+                {t("shell.chinese")}
+              </button>
+            </div>
+            <span className="env-pill">{t("shell.env")}</span>
             <span className={`role-pill ${profile?.role ?? "viewer"}`}>
               <ShieldCheck size={14} />
-              {profile ? roleLabel(profile.role) : "No role"}
+              {profile ? t(`roles.${profile.role}`) : t("shell.noRole")}
             </span>
             <div className="user-chip">
               <div className="avatar-mark">{(session.user.email ?? "PS").slice(0, 2).toUpperCase()}</div>
               <div>
                 <strong>{session.user.email}</strong>
-                <span>{profile ? roleLabel(profile.role) : "Signed in"}</span>
+                <span>{profile ? t(`roles.${profile.role}`) : t("shell.signedIn")}</span>
               </div>
             </div>
             <button className="ghost-button compact-button" onClick={signOut} type="button">
               <LogOut size={15} />
-              Sign out
+              {t("shell.signOut")}
             </button>
           </div>
         </header>
@@ -308,10 +332,9 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
           {message ? <div className="message" style={{ marginBottom: 14 }}>{message}</div> : null}
           {profile?.role === "viewer" ? (
             <div className="message" style={{ marginBottom: 14 }}>
-              You currently have viewer access. If this is the first admin account, claim super admin below. Otherwise ask
-              an admin to upgrade your role.
+              {t("shell.viewerAccess")}
               <button className="ghost-button" onClick={claimFirstAdmin} style={{ marginLeft: 12 }} type="button">
-                Claim first admin
+                {t("shell.claimFirstAdmin")}
               </button>
             </div>
           ) : null}
@@ -321,6 +344,7 @@ export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
           {view === "companies" ? <CompanyManager profile={profile} /> : null}
           {view === "units" ? <BuildingManager mode="units" profile={profile} /> : null}
           {view === "map" ? <BuildingManager mode="map" profile={profile} /> : null}
+          {view === "aiConfig" ? <AIConfigPage /> : null}
           {view === "accounts" && canManageAccounts(profile?.role) ? <AccountsManager currentProfile={profile} /> : null}
         </section>
       </div>

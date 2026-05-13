@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { RefreshCcw, Save } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { roleLabel, statusLabel } from "@/lib/format";
+import { useI18n } from "@/lib/i18n";
 import type { AccountProfile, AccountStatus, AdminRole } from "@/lib/types";
 
 const roles: AdminRole[] = ["super_admin", "admin", "editor", "viewer"];
 const statuses: AccountStatus[] = ["active", "pending", "suspended"];
 
 export function AccountsManager({ currentProfile }: { currentProfile: AccountProfile | null }) {
+  const { t } = useI18n();
   const [accounts, setAccounts] = useState<AccountProfile[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [savingID, setSavingID] = useState<string | null>(null);
@@ -61,19 +62,19 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
     }
 
     updateDraft(account.id, data as AccountProfile);
-    setMessage("Account access updated.");
+    setMessage(t("accounts.updated"));
   }
 
   return (
     <>
       <div className="content-header">
         <div>
-          <div className="eyebrow">Access control</div>
-          <h2>Accounts and roles</h2>
+          <div className="eyebrow">{t("accounts.eyebrow")}</div>
+          <h2>{t("accounts.title")}</h2>
         </div>
         <button className="ghost-button" disabled={isLoading} onClick={loadAccounts} type="button">
           <RefreshCcw size={16} />
-          Refresh
+          {t("common.refresh")}
         </button>
       </div>
 
@@ -83,10 +84,12 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
       <section className="panel">
         <div className="section-title">
           <div>
-            <div className="eyebrow">Role matrix</div>
-            <h3>Assign least-privilege access</h3>
+            <div className="eyebrow">{t("accounts.roleMatrix")}</div>
+            <h3>{t("accounts.leastPrivilege")}</h3>
           </div>
-          <span className="count-pill">{accounts.length} accounts</span>
+          <span className="count-pill">
+            {accounts.length} {t("accounts.accounts")}
+          </span>
         </div>
 
         <div className="accounts-list">
@@ -102,7 +105,7 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
                 </div>
 
                 <label className="field">
-                  <span>Role</span>
+                  <span>{t("accounts.role")}</span>
                   <select
                     value={account.role}
                     onChange={(event) => updateDraft(account.id, { role: event.target.value as AdminRole })}
@@ -111,21 +114,21 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
                       .filter((role) => currentProfile?.role === "super_admin" || role !== "super_admin")
                       .map((role) => (
                         <option disabled={!canAssignSuperAdmin && role === "super_admin"} key={role} value={role}>
-                          {roleLabel(role)}
+                          {t(`roles.${role}`)}
                         </option>
                       ))}
                   </select>
                 </label>
 
                 <label className="field">
-                  <span>Status</span>
+                  <span>{t("accounts.status")}</span>
                   <select
                     value={account.status}
                     onChange={(event) => updateDraft(account.id, { status: event.target.value as AccountStatus })}
                   >
                     {statuses.map((status) => (
                       <option disabled={isSelf && status !== "active"} key={status} value={status}>
-                        {statusLabel(status)}
+                        {t(`statuses.${status}`)}
                       </option>
                     ))}
                   </select>
@@ -133,7 +136,7 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
 
                 <button className="button" disabled={savingID === account.id} onClick={() => saveAccount(account)} type="button">
                   <Save size={16} />
-                  {savingID === account.id ? "Saving..." : "Save"}
+                  {savingID === account.id ? t("common.saving") : t("common.save")}
                 </button>
               </div>
             );

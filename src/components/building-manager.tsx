@@ -2,8 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
-  Archive,
-  Check,
   EyeOff,
   Pencil,
   Plus,
@@ -41,7 +39,6 @@ type BuildingManagerProps = {
   mode: "building" | "units" | "map";
 };
 
-type StatusFilter = "all" | "active" | "archived";
 type UnitIndex = Pick<Unit, "id" | "building_id">;
 type BuildingMetric = {
   unitCount: number;
@@ -92,7 +89,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [isBuildingEditorOpen, setIsBuildingEditorOpen] = useState(false);
   const [unitDialogDraft, setUnitDialogDraft] = useState<UnitWithListing | null>(null);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [companyFilter, setCompanyFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
   const [unitSearch, setUnitSearch] = useState("");
   const [unitBuildingFilter, setUnitBuildingFilter] = useState("all");
@@ -204,7 +201,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
   useEffect(() => {
     setBuildingPage(1);
-  }, [areaFilter, search, statusFilter]);
+  }, [areaFilter, companyFilter, search]);
 
   useEffect(() => {
     setUnitPage(1);
@@ -274,6 +271,18 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     return Array.from(labels).sort((first, second) => first.localeCompare(second));
   }, [buildings]);
 
+  const companyOptions = useMemo(() => {
+    const options = new Map<string, string>();
+
+    buildings.forEach((building) => {
+      options.set(buildingCompanyFilterValue(building), buildingCompanyName(building));
+    });
+
+    return Array.from(options.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((first, second) => first.label.localeCompare(second.label));
+  }, [buildings]);
+
   const mapAreaOptions = useMemo(() => {
     const labels = new Set<string>();
 
@@ -321,27 +330,23 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
     return buildings.filter((building) => {
       const areaLabel = building.area || building.neighborhoods?.name || building.city;
-      const matchesStatus =
-        statusFilter === "all" || (statusFilter === "active" ? building.is_active : !building.is_active);
+      const companyName = buildingCompanyName(building);
+      const matchesCompany = companyFilter === "all" || buildingCompanyFilterValue(building) === companyFilter;
       const matchesArea = areaFilter === "all" || areaLabel === areaFilter;
       const matchesSearch =
         query.length === 0 ||
-        [building.name, building.address, building.full_address, areaLabel, building.city, building.state]
+        [building.name, building.address, building.full_address, areaLabel, companyName, building.city, building.state]
           .filter(Boolean)
           .some((value) => value!.toLowerCase().includes(query));
 
-      return matchesStatus && matchesArea && matchesSearch;
+      return matchesCompany && matchesArea && matchesSearch;
     });
-  }, [areaFilter, buildings, search, statusFilter]);
+  }, [areaFilter, buildings, companyFilter, search]);
 
   const filteredAvailableUnitCount = useMemo(
     () =>
       filteredBuildings.reduce((total, building) => total + (buildingMetrics.get(building.id)?.availableCount ?? 0), 0),
     [buildingMetrics, filteredBuildings]
-  );
-  const activeBuildingCount = useMemo(
-    () => buildings.filter((building) => building.is_active).length,
-    [buildings]
   );
   const geocodedBuildings = useMemo(
     () => buildings.filter((building) => Number.isFinite(building.latitude) && Number.isFinite(building.longitude)),
@@ -479,6 +484,14 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       management_company: null,
       website: null,
       area: "",
+      leasing_email: null,
+      leasing_phone: null,
+      leasing_contact_name: null,
+      tour_booking_url: null,
+      application_url: null,
+      application_fee_cents: null,
+      tour_schedule_notes: null,
+      tour_data_source: "manual",
       created_at: now,
       updated_at: now,
       neighborhoods: null,
@@ -535,28 +548,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   function openBuildingEditor(building: Building) {
     selectBuilding(building);
     setIsBuildingEditorOpen(true);
-  }
-
-  async function setBuildingActive(building: Building, nextIsActive: boolean) {
-    if (!canEdit || building.id.startsWith("new-")) {
-      return;
-    }
-
-    setError(null);
-    setMessage(null);
-
-    const { error: updateError } = await supabase.from("buildings").update({ is_active: nextIsActive }).eq("id", building.id);
-
-    if (updateError) {
-      setError(updateError.message);
-      return;
-    }
-
-    const applyPatch = (current: Building) => (current.id === building.id ? { ...current, is_active: nextIsActive } : current);
-    setBuildings((current) => current.map(applyPatch));
-    setSelectedBuilding((current) => (current ? applyPatch(current) : current));
-    setDraft((current) => (current ? applyPatch(current) : current));
-    setMessage(nextIsActive ? "Building activated." : "Building archived.");
   }
 
   async function deleteBuilding(building: Building) {
@@ -640,8 +631,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       eyebrow: t("manager.buildingsEyebrow"),
       title: t("manager.buildingsTitle", { count: buildings.length.toLocaleString(locale) }),
       subtitle: t("manager.buildingsSubtitle", {
-        active: activeBuildingCount.toLocaleString(locale),
-        archived: (buildings.length - activeBuildingCount).toLocaleString(locale),
+        companies: companyOptions.length.toLocaleString(locale),
         available: filteredAvailableUnitCount.toLocaleString(locale)
       })
     },
@@ -748,9 +738,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             isSaving={isSaving}
             managementCompanies={managementCompanies}
             neighborhoods={neighborhoods}
-            onArchive={() => setBuildingActive(draft, false)}
             onClose={() => setIsBuildingEditorOpen(false)}
-            onRestore={() => setBuildingActive(draft, true)}
             onSave={saveBuilding}
             updateDraft={updateDraft}
           />
@@ -843,10 +831,13 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               onChange={(event) => setSearch(event.target.value)}
             />
           </label>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}>
-            <option value="all">{t("manager.allStatus")}</option>
-            <option value="active">{t("manager.activeOnly")}</option>
-            <option value="archived">{t("manager.archivedOnly")}</option>
+          <select value={companyFilter} onChange={(event) => setCompanyFilter(event.target.value)}>
+            <option value="all">{t("manager.allCompanies")}</option>
+            {companyOptions.map((company) => (
+              <option key={company.value} value={company.value}>
+                {company.label}
+              </option>
+            ))}
           </select>
           <select value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
             <option value="all">{t("manager.allLocations")}</option>
@@ -896,11 +887,9 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               metrics={buildingMetrics}
               selectedBuilding={selectedBuilding}
               startIndex={buildingPageMeta.startIndex}
-              onArchive={(building) => setBuildingActive(building, false)}
               onDelete={deleteBuilding}
               onAddUnit={openAddUnitDialog}
               onOpen={openBuildingEditor}
-              onRestore={(building) => setBuildingActive(building, true)}
             />
             <PaginationControls
               label={t("common.buildings")}
@@ -919,9 +908,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           isSaving={isSaving}
           managementCompanies={managementCompanies}
           neighborhoods={neighborhoods}
-          onArchive={() => setBuildingActive(draft, false)}
           onClose={() => setIsBuildingEditorOpen(false)}
-          onRestore={() => setBuildingActive(draft, true)}
           onSave={saveBuilding}
           updateDraft={updateDraft}
         />
@@ -948,11 +935,9 @@ function BuildingTable({
   canEdit,
   metrics,
   selectedBuilding,
-  onArchive,
   onAddUnit,
   onDelete,
   onOpen,
-  onRestore,
   startIndex
 }: {
   buildings: Building[];
@@ -960,11 +945,9 @@ function BuildingTable({
   metrics: Map<string, BuildingMetric>;
   selectedBuilding: Building | null;
   startIndex: number;
-  onArchive: (building: Building) => void;
   onAddUnit: (building: Building) => void;
   onDelete: (building: Building) => void;
   onOpen: (building: Building) => void;
-  onRestore: (building: Building) => void;
 }) {
   if (buildings.length === 0) {
     return <EmptyState title="No buildings found" body="Try clearing the search or location filters." />;
@@ -982,7 +965,6 @@ function BuildingTable({
             <th>Available</th>
             <th>Lowest net</th>
             <th>Updated</th>
-            <th>Status</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -991,7 +973,7 @@ function BuildingTable({
             const metric = metrics.get(building.id);
             const isSelected = selectedBuilding?.id === building.id;
             const buildingWebsite = building.website;
-            const companyName = building.management_companies?.name ?? building.management_company ?? "N/A";
+            const companyName = buildingCompanyName(building);
             const companyWebsite = building.management_companies?.website ?? null;
 
             return (
@@ -1046,9 +1028,6 @@ function BuildingTable({
                   ) : (
                     <strong>{companyName}</strong>
                   )}
-                  {companyWebsite ? (
-                    <div className="table-subtext">{companyWebsite}</div>
-                  ) : null}
                 </td>
                 <td>
                   <strong>{metric?.availableCount ?? 0}</strong>
@@ -1056,11 +1035,6 @@ function BuildingTable({
                 </td>
                 <td>{formatMoneyFromCents(metric?.minNetPrice)}</td>
                 <td>{formatDate(metric?.latestListingAt ?? building.updated_at)}</td>
-                <td>
-                  <span className={`status-pill ${building.is_active ? "active" : "suspended"}`}>
-                    {building.is_active ? "Active" : "Archived"}
-                  </span>
-                </td>
                 <td>
                   <div className="row-actions">
                     <button
@@ -1076,35 +1050,6 @@ function BuildingTable({
                       <Plus size={14} />
                       Add unit
                     </button>
-                    {building.is_active ? (
-                      <button
-                        className="icon-button"
-                        disabled={!canEdit}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onArchive(building);
-                        }}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        title="Archive"
-                        type="button"
-                      >
-                        <Archive size={15} />
-                      </button>
-                    ) : (
-                      <button
-                        className="icon-button"
-                        disabled={!canEdit}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onRestore(building);
-                        }}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        title="Activate"
-                        type="button"
-                      >
-                        <Check size={15} />
-                      </button>
-                    )}
                     <button
                       className="icon-button danger"
                       disabled={!canEdit}
@@ -1134,17 +1079,13 @@ function BuildingEditor({
   draft,
   managementCompanies,
   neighborhoods,
-  updateDraft,
-  onArchive,
-  onRestore
+  updateDraft
 }: {
   canEdit: boolean;
   draft: Building;
   managementCompanies: ManagementCompany[];
   neighborhoods: Neighborhood[];
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
-  onArchive: () => void;
-  onRestore: () => void;
 }) {
   return (
     <section className="editor-form">
@@ -1279,21 +1220,6 @@ function BuildingEditor({
         </label>
       </div>
 
-      {!draft.id.startsWith("new-") ? (
-        <div className="form-row sticky-actions">
-          {draft.is_active ? (
-            <button className="ghost-button" disabled={!canEdit} onClick={onArchive} type="button">
-              <Archive size={16} />
-              Archive
-            </button>
-          ) : (
-            <button className="ghost-button" disabled={!canEdit} onClick={onRestore} type="button">
-              <Check size={16} />
-              Activate
-            </button>
-          )}
-        </div>
-      ) : null}
     </section>
   );
 }
@@ -1305,9 +1231,7 @@ function BuildingEditorDialog({
   managementCompanies,
   neighborhoods,
   updateDraft,
-  onArchive,
   onClose,
-  onRestore,
   onSave
 }: {
   canEdit: boolean;
@@ -1316,9 +1240,7 @@ function BuildingEditorDialog({
   managementCompanies: ManagementCompany[];
   neighborhoods: Neighborhood[];
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
-  onArchive: () => void;
   onClose: () => void;
-  onRestore: () => void;
   onSave: () => void;
 }) {
   return (
@@ -1345,8 +1267,6 @@ function BuildingEditorDialog({
             draft={draft}
             managementCompanies={managementCompanies}
             neighborhoods={neighborhoods}
-            onArchive={onArchive}
-            onRestore={onRestore}
             updateDraft={updateDraft}
           />
         </div>
@@ -1925,6 +1845,24 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 
 function buildingAreaLabel(building: Building) {
   return building.area || building.neighborhoods?.name || building.city || "Other";
+}
+
+function buildingCompanyName(building: Building) {
+  return building.management_companies?.name ?? building.management_company ?? "Unassigned";
+}
+
+function buildingCompanyFilterValue(building: Building) {
+  if (building.management_company_id) {
+    return `company:${building.management_company_id}`;
+  }
+
+  const legacyName = building.management_company?.trim();
+
+  if (legacyName) {
+    return `legacy:${legacyName.toLowerCase()}`;
+  }
+
+  return "none";
 }
 
 function areaColor(area: string, fallbackIndex: number) {

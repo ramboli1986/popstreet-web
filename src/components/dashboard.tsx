@@ -7,34 +7,43 @@ import { formatDate, formatMoneyFromCents } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import type { Building, UnitListing } from "@/lib/types";
 
-type DashboardDeal = Pick<
-  UnitListing,
-  "id" | "market_price_cents" | "net_price_cents" | "cash_back_cents" | "free_months" | "lease_deal" | "updated_at"
-> & {
+type AvailableUnitAreaRow = Pick<UnitListing, "id" | "unit_id"> & {
   units: {
     id: string;
-    unit_number: string;
-    bedroom_count: number;
-    bathroom_count: number;
-    sqft: number | null;
+    building_id: string;
     buildings: {
       id: string;
-      name: string;
       area: string | null;
       city: string;
       state: string;
     } | null;
-  } | null;
+  } | null | {
+    id: string;
+    building_id: string;
+    buildings: {
+      id: string;
+      area: string | null;
+      city: string;
+      state: string;
+    } | null;
+  }[];
+};
+
+type AreaUnitStat = {
+  area: string;
+  availableBuildings: number;
+  availableUnits: number;
+  percent: number;
 };
 
 export function Dashboard() {
   const { language, t } = useI18n();
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [buildingCount, setBuildingCount] = useState(0);
-  const [activeBuildingCount, setActiveBuildingCount] = useState(0);
+  const [availableBuildingCount, setAvailableBuildingCount] = useState(0);
   const [unitsCount, setUnitsCount] = useState(0);
   const [listings, setListings] = useState<UnitListing[]>([]);
-  const [topDeals, setTopDeals] = useState<DashboardDeal[]>([]);
+  const [availableUnitRows, setAvailableUnitRows] = useState<AvailableUnitAreaRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,10 +54,9 @@ export function Dashboard() {
     const [
       buildingResult,
       buildingCountResult,
-      activeBuildingCountResult,
       unitResult,
       listingResult,
-      topDealsResult
+      availableUnitsResult
     ] = await Promise.all([
       supabase
         .from("buildings")
@@ -56,7 +64,6 @@ export function Dashboard() {
         .order("updated_at", { ascending: false })
         .limit(8),
       supabase.from("buildings").select("id", { count: "exact", head: true }),
-      supabase.from("buildings").select("id", { count: "exact", head: true }).eq("is_active", true),
       supabase.from("units").select("id", { count: "exact", head: true }),
       supabase
         .from("unit_listings")
@@ -68,44 +75,38 @@ export function Dashboard() {
         .select(
           [
             "id",
-            "market_price_cents",
-            "net_price_cents",
-            "cash_back_cents",
-            "free_months",
-            "lease_deal",
-            "updated_at",
-            "units(id, unit_number, bedroom_count, bathroom_count, sqft, buildings(id, name, area, city, state))"
+            "unit_id",
+            "units(id, building_id, buildings(id, area, city, state))"
           ].join(",")
         )
         .eq("status", "available")
-        .order("net_price_cents", { ascending: true })
-        .limit(10)
+        .limit(10000)
     ]);
 
     if (
       buildingResult.error ||
       buildingCountResult.error ||
-      activeBuildingCountResult.error ||
       unitResult.error ||
       listingResult.error ||
-      topDealsResult.error
+      availableUnitsResult.error
     ) {
       setError(
         buildingResult.error?.message ??
           buildingCountResult.error?.message ??
-          activeBuildingCountResult.error?.message ??
           unitResult.error?.message ??
           listingResult.error?.message ??
-          topDealsResult.error?.message ??
+          availableUnitsResult.error?.message ??
           "Load failed"
       );
     } else {
+      const nextAvailableUnitRows = (availableUnitsResult.data ?? []) as unknown as AvailableUnitAreaRow[];
+
       setBuildings((buildingResult.data ?? []) as Building[]);
       setBuildingCount(buildingCountResult.count ?? 0);
-      setActiveBuildingCount(activeBuildingCountResult.count ?? 0);
+      setAvailableBuildingCount(countAvailableBuildings(nextAvailableUnitRows));
       setUnitsCount(unitResult.count ?? 0);
       setListings((listingResult.data ?? []) as UnitListing[]);
-      setTopDeals((topDealsResult.data ?? []) as unknown as DashboardDeal[]);
+      setAvailableUnitRows(nextAvailableUnitRows);
     }
 
     setIsLoading(false);
@@ -114,6 +115,10 @@ export function Dashboard() {
   useEffect(() => {
     loadDashboard();
   }, []);
+
+  const areaUnitStats = useMemo(() => buildAreaUnitStats(availableUnitRows), [availableUnitRows]);
+  const availableUnitsByBuilding = useMemo(() => buildAvailableUnitsByBuilding(availableUnitRows), [availableUnitRows]);
+  const availableUnitCount = useMemo(() => countAvailableUnits(availableUnitRows), [availableUnitRows]);
 
   const stats = useMemo(() => {
     const availableListings = listings.filter((listing) => listing.status === "available");
@@ -141,9 +146,9 @@ export function Dashboard() {
 
     return {
       totalBuildings: buildingCount,
-      activeBuildings: activeBuildingCount,
+      activeBuildings: availableBuildingCount,
       totalUnits: unitsCount,
-      availableListings: availableListings.length,
+      availableListings: availableUnitCount,
       minNetPrice,
       medianNetPrice,
       newToday: listings.filter((listing) => new Date(listing.listed_at).getTime() >= todayTime).length,
@@ -151,11 +156,10 @@ export function Dashboard() {
         (listing) => listing.unavailable_at && new Date(listing.unavailable_at).getTime() >= todayTime
       ).length
     };
-  }, [activeBuildingCount, buildingCount, listings, unitsCount]);
+  }, [availableBuildingCount, availableUnitCount, buildingCount, listings, unitsCount]);
 
   const locale = language === "zh" ? "zh-CN" : "en-US";
   const trendBuckets = useMemo(() => buildTrendBuckets(listings, locale), [listings, locale]);
-  const areaBreakdown = useMemo(() => buildAreaBreakdown(topDeals), [topDeals]);
 
   return (
     <div className="dashboard-page">
@@ -239,24 +243,20 @@ export function Dashboard() {
           <ActivityBars buckets={trendBuckets} />
         </article>
 
-        <article className="analytics-card top-deals-card">
+        <article className="analytics-card area-unit-card">
           <div className="card-heading">
             <div>
-              <div className="eyebrow">{t("dashboard.hot")}</div>
-              <h3>{t("dashboard.topDealsNow")}</h3>
+              <div className="eyebrow">{t("dashboard.areaInventory")}</div>
+              <h3>{t("dashboard.unitsByArea")}</h3>
             </div>
-            <span className="count-pill">{t("dashboard.live")}</span>
+            <span className="count-pill">{t("dashboard.availableAreas", { count: areaUnitStats.length.toLocaleString(locale) })}</span>
           </div>
 
-          <div className="top-deal-list">
-            {topDeals.map((deal) => (
-              <TopDealRow deal={deal} key={deal.id} t={t} />
-            ))}
-          </div>
+          <AreaUnitStats rows={areaUnitStats} locale={locale} t={t} />
         </article>
       </section>
 
-      <section className="dashboard-secondary-grid">
+      <section className="dashboard-secondary-grid single-column">
         <article className="analytics-card">
           <div className="card-heading">
             <div>
@@ -267,43 +267,26 @@ export function Dashboard() {
           </div>
 
           <div className="recent-building-list">
-            {buildings.map((building) => (
-              <div className="recent-building-row" key={building.id}>
-                <div>
-                  <strong>{building.name}</strong>
-                  <p className="muted">
-                    {building.area ?? building.neighborhoods?.name ?? building.city}, {building.state}
-                  </p>
-                </div>
-                <span className={`status-pill ${building.is_active ? "active" : "suspended"}`}>
-                  {building.is_active ? t("common.active") : t("common.archived")}
-                </span>
-                <span className="muted">{formatDate(building.updated_at)}</span>
-              </div>
-            ))}
-          </div>
-        </article>
+            {buildings.map((building) => {
+              const availableCount = availableUnitsByBuilding.get(building.id) ?? 0;
 
-        <article className="analytics-card">
-          <div className="card-heading">
-            <div>
-              <div className="eyebrow">{t("dashboard.neighborhoodMix")}</div>
-              <h3>{t("dashboard.dealConcentration")}</h3>
-            </div>
-            <span className="count-pill">{t("dashboard.topDeals")}</span>
-          </div>
-          <div className="breakdown-list">
-            {areaBreakdown.map((row) => (
-              <div className="breakdown-row" key={row.area}>
-                <div>
-                  <strong>{row.area}</strong>
-                  <span>{t("dashboard.dealCount", { count: row.count.toLocaleString(locale) })}</span>
+              return (
+                <div className="recent-building-row" key={building.id}>
+                  <div>
+                    <strong>{building.name}</strong>
+                    <p className="muted">
+                      {building.area ?? building.neighborhoods?.name ?? building.city}, {building.state}
+                    </p>
+                  </div>
+                  <span className="count-pill">
+                    {t("dashboard.availableUnitCount", {
+                      count: availableCount.toLocaleString(locale)
+                    })}
+                  </span>
+                  <span className="muted">{formatDate(building.updated_at)}</span>
                 </div>
-                <div className="breakdown-track">
-                  <span style={{ width: `${row.percent}%` }} />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </article>
       </section>
@@ -313,52 +296,34 @@ export function Dashboard() {
 
 type Translate = (key: string, params?: Record<string, number | string>) => string;
 
-function TopDealRow({ deal, t }: { deal: DashboardDeal; t: Translate }) {
-  const unit = deal.units;
-  const building = unit?.buildings;
-  const discountPercent =
-    deal.market_price_cents && deal.market_price_cents > deal.net_price_cents
-      ? Math.round(((deal.market_price_cents - deal.net_price_cents) / deal.market_price_cents) * 100)
-      : null;
-  const layout = unit
-    ? `${unit.bedroom_count === 0 ? t("dashboard.studio") : `${unit.bedroom_count} ${t("dashboard.bedShort")}`} / ${
-        unit.bathroom_count
-      } ${t("dashboard.bathShort")}${unit.sqft ? ` / ${unit.sqft.toLocaleString()} ${t("dashboard.sqft")}` : ""}`
-    : t("dashboard.layoutMissing");
-
-  const defaultDealLabel = t("dashboard.monthsFreeShort", {
-    count: deal.free_months.toLocaleString()
-  });
-
-  const cashbackLabel =
-    deal.cash_back_cents > 0 ? ` · ${formatMoneyFromCents(deal.cash_back_cents)} ${t("common.back")}` : "";
-
+function AreaUnitStats({ locale, rows, t }: { locale: string; rows: AreaUnitStat[]; t: Translate }) {
   return (
-    <div className="top-deal-row">
-      <span className="deal-rank" />
-      <div>
-        <strong>{building?.name ?? t("dashboard.unknownBuilding")}</strong>
-        <p className="muted">
-          {t("common.unit")} {unit?.unit_number ?? t("common.na")} ·{" "}
-          {building ? `${building.area ?? building.city}, ${building.state}` : t("dashboard.noLocation")}
-        </p>
-      </div>
-      <div className="deal-layout">{layout}</div>
-      <div className="deal-price">
-        <strong>{formatMoneyFromCents(deal.net_price_cents)}</strong>
-        <span>
-          {deal.market_price_cents
-            ? `${formatMoneyFromCents(deal.market_price_cents)} ${t("common.market")}`
-            : t("dashboard.noMarketPrice")}
-        </span>
-      </div>
-      <div className="deal-chip">
-        {deal.lease_deal || defaultDealLabel}
-        {cashbackLabel}
-      </div>
-      <div className="deal-meta">
-        {discountPercent == null ? t("common.na") : t("dashboard.percentOff", { percent: discountPercent })}
-        <span>{formatDate(deal.updated_at)}</span>
+    <div className="breakdown-list area-unit-list">
+      {rows.length === 0 ? (
+        <div className="empty-state compact-empty">
+          <strong>{t("dashboard.noAreaUnits")}</strong>
+          <p>{t("dashboard.noAreaUnitsHint")}</p>
+        </div>
+      ) : null}
+      {rows.map((row) => (
+        <div className="breakdown-row area-unit-row" key={row.area}>
+          <div>
+            <strong>{row.area}</strong>
+            <span>
+              {t("dashboard.areaUnitCount", {
+                units: row.availableUnits.toLocaleString(locale),
+                buildings: row.availableBuildings.toLocaleString(locale)
+              })}
+            </span>
+          </div>
+          <div className="breakdown-track">
+            <span style={{ width: `${row.percent}%` }} />
+          </div>
+        </div>
+      ))}
+      <div className="area-unit-summary">
+        <strong>{rows.reduce((total, row) => total + row.availableUnits, 0).toLocaleString(locale)}</strong>
+        <span>{t("dashboard.availableUnitsTotal")}</span>
       </div>
     </div>
   );
@@ -451,23 +416,82 @@ function buildTrendBuckets(listings: UnitListing[], locale: string): TrendBucket
   });
 }
 
-function buildAreaBreakdown(deals: DashboardDeal[]) {
-  const counts = new Map<string, number>();
+function buildAreaUnitStats(rows: AvailableUnitAreaRow[]): AreaUnitStat[] {
+  const groups = new Map<string, { buildingIDs: Set<string>; unitIDs: Set<string> }>();
 
-  deals.forEach((deal) => {
-    const building = deal.units?.buildings;
+  rows.forEach((row) => {
+    const unit = oneRelation(row.units);
+    const building = oneRelation(unit?.buildings);
+    const unitID = unit?.id ?? row.unit_id;
+    const buildingID = building?.id ?? unit?.building_id;
+
+    if (!unitID || !buildingID) {
+      return;
+    }
+
     const area = building?.area ?? building?.city ?? "Unknown";
-    counts.set(area, (counts.get(area) ?? 0) + 1);
+    const group = groups.get(area) ?? { buildingIDs: new Set<string>(), unitIDs: new Set<string>() };
+    group.buildingIDs.add(buildingID);
+    group.unitIDs.add(unitID);
+    groups.set(area, group);
   });
 
-  const maxCount = Math.max(1, ...counts.values());
+  const maxUnits = Math.max(1, ...Array.from(groups.values()).map((group) => group.unitIDs.size));
 
-  return Array.from(counts.entries())
-    .map(([area, count]) => ({
+  return Array.from(groups.entries())
+    .map(([area, group]) => ({
       area,
-      count,
-      percent: Math.max(8, (count / maxCount) * 100)
+      availableBuildings: group.buildingIDs.size,
+      availableUnits: group.unitIDs.size,
+      percent: Math.max(8, (group.unitIDs.size / maxUnits) * 100)
     }))
-    .sort((first, second) => second.count - first.count)
-    .slice(0, 8);
+    .sort((first, second) => second.availableUnits - first.availableUnits || first.area.localeCompare(second.area));
+}
+
+function buildAvailableUnitsByBuilding(rows: AvailableUnitAreaRow[]) {
+  const counts = new Map<string, Set<string>>();
+
+  rows.forEach((row) => {
+    const unit = oneRelation(row.units);
+    const building = oneRelation(unit?.buildings);
+    const unitID = unit?.id ?? row.unit_id;
+    const buildingID = building?.id ?? unit?.building_id;
+
+    if (!unitID || !buildingID) {
+      return;
+    }
+
+    const units = counts.get(buildingID) ?? new Set<string>();
+    units.add(unitID);
+    counts.set(buildingID, units);
+  });
+
+  return new Map(Array.from(counts.entries()).map(([buildingID, unitIDs]) => [buildingID, unitIDs.size]));
+}
+
+function countAvailableBuildings(rows: AvailableUnitAreaRow[]) {
+  return buildAvailableUnitsByBuilding(rows).size;
+}
+
+function countAvailableUnits(rows: AvailableUnitAreaRow[]) {
+  const unitIDs = new Set<string>();
+
+  rows.forEach((row) => {
+    const unit = oneRelation(row.units);
+    const unitID = unit?.id ?? row.unit_id;
+
+    if (unitID) {
+      unitIDs.add(unitID);
+    }
+  });
+
+  return unitIDs.size;
+}
+
+function oneRelation<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) {
+    return value[0] ?? null;
+  }
+
+  return value ?? null;
 }

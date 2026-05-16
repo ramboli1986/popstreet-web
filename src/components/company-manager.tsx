@@ -119,6 +119,8 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
       unit_count_label: null,
       estimated_unit_count: null,
       notes: null,
+      contact_email: null,
+      contact_phone: null,
       created_at: now,
       updated_at: now
     });
@@ -487,6 +489,8 @@ function companyPayload(company: ManagementCompany) {
     key_assets: company.key_assets,
     unit_count_label: company.unit_count_label,
     estimated_unit_count: company.estimated_unit_count,
-    notes: company.notes
+    notes: company.notes,
+    contact_email: company.contact_email,
+    contact_phone: company.contact_phone
   };
 }

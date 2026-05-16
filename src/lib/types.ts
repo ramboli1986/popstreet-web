@@ -29,9 +29,13 @@ export type ManagementCompany = {
   unit_count_label: string | null;
   estimated_unit_count: number | null;
   notes: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
   created_at: string;
   updated_at: string;
 };
+
+export type TourDataSource = "manual" | "scraped_pending" | "scraped_verified";
 
 export type Building = {
   id: string;
@@ -58,10 +62,71 @@ export type Building = {
   management_company: string | null;
   website: string | null;
   area: string | null;
+  leasing_email: string | null;
+  leasing_phone: string | null;
+  leasing_contact_name: string | null;
+  tour_booking_url: string | null;
+  application_url: string | null;
+  application_fee_cents: number | null;
+  tour_schedule_notes: string | null;
+  tour_data_source: TourDataSource;
   created_at: string;
   updated_at: string;
   neighborhoods?: Pick<Neighborhood, "name" | "slug"> | null;
   management_companies?: Pick<ManagementCompany, "id" | "slug" | "name" | "website"> | null;
+};
+
+export type TourRequestStatus =
+  | "submitted"
+  | "link_provided"
+  | "ops_review"
+  | "leasing_contacted"
+  | "scheduled"
+  | "completed"
+  | "cancelled"
+  | "no_response";
+
+export type TourType = "in_person" | "virtual" | "self_guided";
+
+export type TourRequest = {
+  id: string;
+  user_id: string;
+  building_id: string;
+  unit_id: string | null;
+  listing_id: string | null;
+  preferred_dates: string[];
+  preferred_time_of_day: "morning" | "afternoon" | "evening" | "flexible" | null;
+  tour_type: TourType;
+  status: TourRequestStatus;
+  notes: string | null;
+  external_link_used: string | null;
+  scheduled_for: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApplicationStatus =
+  | "submitted"
+  | "link_provided"
+  | "ops_review"
+  | "in_progress"
+  | "submitted_to_lo"
+  | "accepted"
+  | "rejected"
+  | "withdrawn";
+
+export type Application = {
+  id: string;
+  user_id: string;
+  building_id: string;
+  unit_id: string | null;
+  listing_id: string | null;
+  status: ApplicationStatus;
+  external_link_used: string | null;
+  notes: string | null;
+  fee_cents: number | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Unit = {

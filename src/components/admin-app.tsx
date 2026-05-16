@@ -344,7 +344,7 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
           {view === "companies" ? <CompanyManager profile={profile} /> : null}
           {view === "units" ? <BuildingManager mode="units" profile={profile} /> : null}
           {view === "map" ? <BuildingManager mode="map" profile={profile} /> : null}
-          {view === "aiConfig" ? <AIConfigPage /> : null}
+          {view === "aiConfig" ? <AIConfigPage profile={profile} /> : null}
           {view === "accounts" && canManageAccounts(profile?.role) ? <AccountsManager currentProfile={profile} /> : null}
         </section>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction, type UIEvent } from "react";
 import { ExternalLink, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { canEditInventory, canManageAccounts, formatDate, slugify, stringArrayToInput, toStringArray } from "@/lib/format";
@@ -16,7 +16,7 @@ type BuildingCompanyLink = {
   management_company_id: string | null;
 };
 
-const companyPageSize = 25;
+const companyBatchSize = 25;
 
 export function CompanyManager({ profile }: CompanyManagerProps) {
   const { language, t } = useI18n();
@@ -25,7 +25,7 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
   const [buildingLinks, setBuildingLinks] = useState<BuildingCompanyLink[]>([]);
   const [draft, setDraft] = useState<ManagementCompany | null>(null);
   const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
+  const [visibleCompanyCount, setVisibleCompanyCount] = useState(companyBatchSize);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
   }, [loadCompanies]);
 
   useEffect(() => {
-    setPage(1);
+    setVisibleCompanyCount(companyBatchSize);
   }, [search]);
 
   const linkedBuildingCounts = useMemo(() => {
@@ -102,10 +102,10 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
     );
   }, [companies, search]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredCompanies.length / companyPageSize));
-  const currentPage = Math.min(page, pageCount);
-  const startIndex = (currentPage - 1) * companyPageSize;
-  const paginatedCompanies = filteredCompanies.slice(startIndex, startIndex + companyPageSize);
+  const visibleCompanies = useMemo(
+    () => filteredCompanies.slice(0, visibleCompanyCount),
+    [filteredCompanies, visibleCompanyCount]
+  );
 
   function createCompanyDraft() {
     const now = new Date().toISOString();
@@ -242,10 +242,21 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
           </span>
         </div>
 
-        {paginatedCompanies.length === 0 ? (
+        {visibleCompanies.length === 0 ? (
           <div className="empty-state">{t("companies.empty")}</div>
         ) : (
-          <div className="admin-table-wrap">
+          <div
+            className="admin-table-wrap"
+            onScroll={(event) =>
+              handleScrollLoadMore(
+                event,
+                visibleCompanyCount,
+                filteredCompanies.length,
+                setVisibleCompanyCount,
+                companyBatchSize
+              )
+            }
+          >
             <table className="admin-table">
               <thead>
                 <tr>
@@ -260,9 +271,9 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
                 </tr>
               </thead>
               <tbody>
-                {paginatedCompanies.map((company, index) => (
+                {visibleCompanies.map((company, index) => (
                   <tr className="clickable-row" key={company.id} onClick={() => setDraft(company)} tabIndex={0}>
-                    <td className="row-index">{startIndex + index + 1}</td>
+                    <td className="row-index">{index + 1}</td>
                     <td>
                       <button
                         className="table-primary-link"
@@ -328,36 +339,9 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
                 ))}
               </tbody>
             </table>
+            <LoadMoreStatus shown={visibleCompanies.length} total={filteredCompanies.length} />
           </div>
         )}
-
-        <div className="pagination-bar">
-          <span>
-            {filteredCompanies.length === 0
-              ? t("companies.noCompanies")
-              : t("companies.showing", {
-                  from: startIndex + 1,
-                  to: Math.min(startIndex + companyPageSize, filteredCompanies.length),
-                  total: filteredCompanies.length.toLocaleString(locale)
-                })}
-          </span>
-          <div className="pagination-actions">
-            <button className="ghost-button compact-button" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)} type="button">
-              {t("companies.previous")}
-            </button>
-            <strong>
-              {currentPage} / {pageCount}
-            </strong>
-            <button
-              className="ghost-button compact-button"
-              disabled={currentPage >= pageCount}
-              onClick={() => setPage(currentPage + 1)}
-              type="button"
-            >
-              {t("companies.next")}
-            </button>
-          </div>
-        </div>
       </section>
 
       {draft ? (
@@ -478,6 +462,35 @@ function NumberField({
         onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))}
       />
     </label>
+  );
+}
+
+function handleScrollLoadMore(
+  event: UIEvent<HTMLElement>,
+  visibleCount: number,
+  totalCount: number,
+  setVisibleCount: Dispatch<SetStateAction<number>>,
+  batchSize: number
+) {
+  if (visibleCount >= totalCount) {
+    return;
+  }
+
+  const element = event.currentTarget;
+  const remainingScroll = element.scrollHeight - element.scrollTop - element.clientHeight;
+
+  if (remainingScroll > 180) {
+    return;
+  }
+
+  setVisibleCount((current) => Math.min(totalCount, current + batchSize));
+}
+
+function LoadMoreStatus({ shown, total }: { shown: number; total: number }) {
+  return (
+    <div className="load-more-status">
+      {shown >= total ? `Showing all ${total}` : `Showing ${shown} of ${total}. Scroll for more.`}
+    </div>
   );
 }
 

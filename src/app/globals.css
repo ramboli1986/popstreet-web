@@ -1162,6 +1162,7 @@ strong {
 .field input,
 .field textarea,
 .field select,
+.readonly-field output,
 .search-input,
 .unit-table input,
 .unit-table select,
@@ -1177,6 +1178,7 @@ strong {
 .ops-toolbar select,
 .field input,
 .field select,
+.readonly-field output,
 .search-input,
 .unit-table input,
 .unit-table select,
@@ -1189,6 +1191,14 @@ strong {
   min-height: 86px;
   padding: 9px;
   resize: vertical;
+}
+
+.readonly-field output {
+  display: flex;
+  align-items: center;
+  background: #f8fafc;
+  color: var(--ink);
+  font-weight: 650;
 }
 
 .field input:focus,
@@ -1271,6 +1281,16 @@ strong {
   min-height: 0;
 }
 
+.load-more-status {
+  border-top: 1px solid var(--line-soft);
+  background: #fbfcfe;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 12px;
+  text-align: center;
+}
+
 .admin-table {
   width: 100%;
   border-collapse: collapse;
@@ -1331,31 +1351,6 @@ strong {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-}
-
-.pagination-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex: 0 0 auto;
-  border-top: 1px solid var(--line-soft);
-  background: white;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 10px 14px;
-}
-
-.pagination-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.pagination-actions strong {
-  color: var(--ink);
-  font-size: 12px;
 }
 
 .mini-action {
@@ -1792,12 +1787,12 @@ strong {
 }
 
 .global-unit-table {
-  min-width: 1280px;
+  min-width: 1140px;
 }
 
 .global-unit-table .unit-table-head,
 .global-unit-table .unit-table-row {
-  grid-template-columns: 0.9fr 1.35fr 1fr 1.2fr 1.05fr 0.72fr 0.95fr;
+  grid-template-columns: 0.9fr 1.35fr 1fr 1.2fr 1.05fr 0.72fr;
 }
 
 .unit-table-head {

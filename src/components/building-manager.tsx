@@ -1,9 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type SetStateAction,
+  type UIEvent
+} from "react";
 import {
   EyeOff,
-  Pencil,
   Plus,
   RefreshCcw,
   Save,
@@ -50,8 +58,10 @@ type UnitStatusFilter = "all" | ListingStatus;
 type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 
 const listingStatuses: ListingStatus[] = ["available", "pending", "unavailable", "rented", "archived"];
-const buildingPageSize = 25;
-const unitPageSize = 25;
+const leaseMonthOptions = Array.from({ length: 15 }, (_item, index) => index + 10);
+const freeMonthOptions = Array.from({ length: 13 }, (_item, index) => index * 0.5);
+const buildingBatchSize = 25;
+const unitBatchSize = 25;
 const preferredMapAreas = [
   "Jersey City",
   "LIC",
@@ -95,8 +105,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [unitBuildingFilter, setUnitBuildingFilter] = useState("all");
   const [unitStatusFilter, setUnitStatusFilter] = useState<UnitStatusFilter>("all");
   const [unitBedroomFilter, setUnitBedroomFilter] = useState<UnitBedroomFilter>("all");
-  const [buildingPage, setBuildingPage] = useState(1);
-  const [unitPage, setUnitPage] = useState(1);
+  const [visibleBuildingCount, setVisibleBuildingCount] = useState(buildingBatchSize);
+  const [visibleUnitCount, setVisibleUnitCount] = useState(unitBatchSize);
   const [selectedMapArea, setSelectedMapArea] = useState("all");
   const [mapResetSignal, setMapResetSignal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -200,11 +210,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   }, [loadUnits]);
 
   useEffect(() => {
-    setBuildingPage(1);
+    setVisibleBuildingCount(buildingBatchSize);
   }, [areaFilter, companyFilter, search]);
 
   useEffect(() => {
-    setUnitPage(1);
+    setVisibleUnitCount(unitBatchSize);
   }, [unitBedroomFilter, unitBuildingFilter, unitSearch, unitStatusFilter]);
 
   const buildingMetrics = useMemo(() => {
@@ -400,24 +410,14 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     [filteredUnits]
   );
 
-  const buildingPageMeta = useMemo(
-    () => paginationMeta(filteredBuildings.length, buildingPage, buildingPageSize),
-    [buildingPage, filteredBuildings.length]
+  const visibleBuildings = useMemo(
+    () => filteredBuildings.slice(0, visibleBuildingCount),
+    [filteredBuildings, visibleBuildingCount]
   );
 
-  const paginatedBuildings = useMemo(
-    () => filteredBuildings.slice(buildingPageMeta.startIndex, buildingPageMeta.endIndex),
-    [buildingPageMeta.endIndex, buildingPageMeta.startIndex, filteredBuildings]
-  );
-
-  const unitPageMeta = useMemo(
-    () => paginationMeta(filteredUnits.length, unitPage, unitPageSize),
-    [filteredUnits.length, unitPage]
-  );
-
-  const paginatedUnits = useMemo(
-    () => filteredUnits.slice(unitPageMeta.startIndex, unitPageMeta.endIndex),
-    [filteredUnits, unitPageMeta.endIndex, unitPageMeta.startIndex]
+  const visibleUnits = useMemo(
+    () => filteredUnits.slice(0, visibleUnitCount),
+    [filteredUnits, visibleUnitCount]
   );
 
   const selectedUnitFilterBuilding = useMemo(
@@ -861,13 +861,13 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       {mode === "units" ? (
         <UnitManager
           buildingsByID={buildingByID}
-          canEdit={canEdit}
           filteredCount={filteredUnits.length}
-          pageMeta={unitPageMeta}
-          onPageChange={setUnitPage}
+          onLoadMore={(event) =>
+            handleScrollLoadMore(event, visibleUnitCount, filteredUnits.length, setVisibleUnitCount, unitBatchSize)
+          }
           onEditUnit={openEditUnitDialog}
           totalCount={units.length}
-          units={paginatedUnits}
+          units={visibleUnits}
         />
       ) : (
         <div className={`inventory-stack ${mode === "building" ? "building-only" : ""}`}>
@@ -882,19 +882,23 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               </span>
             </div>
             <BuildingTable
-              buildings={paginatedBuildings}
+              buildings={visibleBuildings}
               canEdit={canEdit}
+              filteredCount={filteredBuildings.length}
               metrics={buildingMetrics}
               selectedBuilding={selectedBuilding}
-              startIndex={buildingPageMeta.startIndex}
               onDelete={deleteBuilding}
               onAddUnit={openAddUnitDialog}
+              onLoadMore={(event) =>
+                handleScrollLoadMore(
+                  event,
+                  visibleBuildingCount,
+                  filteredBuildings.length,
+                  setVisibleBuildingCount,
+                  buildingBatchSize
+                )
+              }
               onOpen={openBuildingEditor}
-            />
-            <PaginationControls
-              label={t("common.buildings")}
-              pageMeta={buildingPageMeta}
-              onPageChange={setBuildingPage}
             />
           </section>
 
@@ -933,20 +937,22 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 function BuildingTable({
   buildings,
   canEdit,
+  filteredCount,
   metrics,
   selectedBuilding,
   onAddUnit,
   onDelete,
+  onLoadMore,
   onOpen,
-  startIndex
 }: {
   buildings: Building[];
   canEdit: boolean;
+  filteredCount: number;
   metrics: Map<string, BuildingMetric>;
   selectedBuilding: Building | null;
-  startIndex: number;
   onAddUnit: (building: Building) => void;
   onDelete: (building: Building) => void;
+  onLoadMore: (event: UIEvent<HTMLDivElement>) => void;
   onOpen: (building: Building) => void;
 }) {
   if (buildings.length === 0) {
@@ -954,7 +960,7 @@ function BuildingTable({
   }
 
   return (
-    <div className="admin-table-wrap">
+    <div className="admin-table-wrap" onScroll={onLoadMore}>
       <table className="admin-table">
         <thead>
           <tr>
@@ -989,7 +995,7 @@ function BuildingTable({
                 }}
                 tabIndex={0}
               >
-                <td className="row-index">{startIndex + index + 1}</td>
+                <td className="row-index">{index + 1}</td>
                 <td>
                   {buildingWebsite ? (
                     <a
@@ -1070,6 +1076,7 @@ function BuildingTable({
           })}
         </tbody>
       </table>
+      <LoadMoreStatus shown={buildings.length} total={filteredCount} />
     </div>
   );
 }
@@ -1278,19 +1285,15 @@ function BuildingEditorDialog({
 function UnitManager({
   buildingsByID,
   units,
-  canEdit,
   filteredCount,
-  pageMeta,
-  onPageChange,
+  onLoadMore,
   onEditUnit,
   totalCount
 }: {
   buildingsByID: Map<string, Building>;
   units: UnitWithListing[];
-  canEdit: boolean;
   filteredCount: number;
-  pageMeta: PaginationMeta;
-  onPageChange: (page: number) => void;
+  onLoadMore: (event: UIEvent<HTMLDivElement>) => void;
   onEditUnit: (unit: UnitWithListing) => void;
   totalCount: number;
 }) {
@@ -1309,7 +1312,7 @@ function UnitManager({
       {units.length === 0 ? (
         <EmptyState title="No units found" body="Try clearing the unit filters or search terms." />
       ) : (
-        <div className="unit-table-wrap">
+        <div className="unit-table-wrap" onScroll={onLoadMore}>
           <div className="unit-table global-unit-table">
             <div className="unit-table-head">
               <span>Unit</span>
@@ -1318,21 +1321,19 @@ function UnitManager({
               <span>Price</span>
               <span>Deal</span>
               <span>Status</span>
-              <span>Actions</span>
             </div>
             {units.map((unit) => (
               <UnitListingRow
                 building={buildingsByID.get(unit.building_id) ?? null}
-                canEdit={canEdit}
                 key={unit.id}
                 onEditUnit={onEditUnit}
                 unit={unit}
               />
             ))}
           </div>
+          <LoadMoreStatus shown={units.length} total={filteredCount} />
         </div>
       )}
-      <PaginationControls label="units" pageMeta={pageMeta} onPageChange={onPageChange} />
     </section>
   );
 }
@@ -1340,12 +1341,10 @@ function UnitManager({
 function UnitListingRow({
   building,
   unit,
-  canEdit,
   onEditUnit
 }: {
   building: Building | null;
   unit: UnitWithListing;
-  canEdit: boolean;
   onEditUnit: (unit: UnitWithListing) => void;
 }) {
   const listing = unit.listing ?? defaultListing(unit.id);
@@ -1399,20 +1398,6 @@ function UnitListingRow({
           {listing.status}
         </span>
       </div>
-      <div className="unit-cell unit-actions">
-        <button
-          className="mini-action"
-          disabled={!canEdit}
-          onClick={(event) => {
-            event.stopPropagation();
-            onEditUnit(unit);
-          }}
-          type="button"
-        >
-          <Pencil size={14} />
-          Edit card
-        </button>
-      </div>
     </div>
   );
 }
@@ -1431,23 +1416,42 @@ function UnitEditorDialog({
   onSaved: () => Promise<void> | void;
 }) {
   const [draft, setDraft] = useState(unit);
+  const [leaseMonths, setLeaseMonths] = useState(() => leaseMonthsFromListing(unit.listing ?? defaultListing(unit.id)));
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(unit);
+    setLeaseMonths(leaseMonthsFromListing(unit.listing ?? defaultListing(unit.id)));
     setError(null);
   }, [unit]);
 
+  function updateListingDraft(patch: Partial<UnitListing>, nextLeaseMonths = leaseMonths) {
+    setDraft((current) => {
+      const nextListing = applyConcessionPricing(
+        {
+          ...defaultListing(current.id),
+          ...current.listing,
+          ...patch,
+          lease_months: nextLeaseMonths
+        },
+        nextLeaseMonths
+      );
+
+      return {
+        ...current,
+        listing: nextListing
+      };
+    });
+  }
+
   function updateListing<K extends keyof UnitListing>(key: K, value: UnitListing[K]) {
-    setDraft((current) => ({
-      ...current,
-      listing: {
-        ...defaultListing(current.id),
-        ...current.listing,
-        [key]: value
-      }
-    }));
+    updateListingDraft({ [key]: value } as Pick<UnitListing, K>);
+  }
+
+  function updateLeaseMonths(nextLeaseMonths: number) {
+    setLeaseMonths(nextLeaseMonths);
+    updateListingDraft({}, nextLeaseMonths);
   }
 
   async function persistUnit(nextDraft: UnitWithListing) {
@@ -1504,17 +1508,28 @@ function UnitEditorDialog({
     }
 
     const savedUnit = unitResult.data as Unit;
-    const listing = nextDraft.listing ? { ...defaultListing(savedUnit.id), ...nextDraft.listing, unit_id: savedUnit.id } : null;
+    const listing = nextDraft.listing
+      ? applyConcessionPricing(
+          {
+            ...defaultListing(savedUnit.id),
+            ...nextDraft.listing,
+            unit_id: savedUnit.id
+          },
+          leaseMonths
+        )
+      : null;
 
     if (listing) {
       const listingPayload = {
         unit_id: savedUnit.id,
         status: listing.status,
         market_price_cents: listing.market_price_cents,
+        lease_months: listing.lease_months,
         net_price_cents: listing.net_price_cents,
         lease_deal: listing.lease_deal,
         free_months: listing.free_months,
         cash_back_cents: listing.cash_back_cents,
+        final_price_cents: listing.final_price_cents,
         available_from: listing.available_from,
         source: listing.source || "admin",
         last_seen_at: new Date().toISOString(),
@@ -1601,7 +1616,8 @@ function UnitEditorDialog({
     onClose();
   }
 
-  const listing = draft.listing ?? defaultListing(draft.id);
+  const listing = applyConcessionPricing(draft.listing ?? defaultListing(draft.id), leaseMonths);
+  const totalTermMonths = leaseMonths + listing.free_months;
 
   return (
     <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
@@ -1676,7 +1692,7 @@ function UnitEditorDialog({
 
           <section className="unit-editor-card">
             <div className="form-section-title">Price</div>
-            <div className="form-grid dense three">
+            <div className="form-grid dense">
               <CentsInput
                 disabled={!canEdit}
                 label="Market"
@@ -1685,35 +1701,34 @@ function UnitEditorDialog({
               />
               <CentsInput
                 disabled={!canEdit}
-                label="Net"
-                value={listing.net_price_cents}
-                onChange={(value) => updateListing("net_price_cents", value ?? 0)}
-              />
-              <CentsInput
-                disabled={!canEdit}
                 label="Cashback"
                 value={listing.cash_back_cents}
                 onChange={(value) => updateListing("cash_back_cents", value ?? 0)}
               />
+              <ReadonlyMoneyField label="Net price" value={listing.net_price_cents} />
+              <ReadonlyMoneyField label="Final price" value={listing.final_price_cents} />
             </div>
           </section>
 
           <section className="unit-editor-card">
             <div className="form-section-title">Deal and status</div>
             <div className="form-grid dense">
-              <InputField
+              <MonthSelect
                 disabled={!canEdit}
-                label="Lease deal"
-                value={listing.lease_deal ?? ""}
-                onChange={(value) => updateListing("lease_deal", value || null)}
+                label="Lease months"
+                options={leaseMonthOptions}
+                value={leaseMonths}
+                onChange={updateLeaseMonths}
               />
-              <NumberField
+              <MonthSelect
                 disabled={!canEdit}
                 label="Free months"
-                step="0.5"
+                options={freeMonthOptions}
                 value={listing.free_months}
-                onChange={(value) => updateListing("free_months", value ?? 0)}
+                onChange={(value) => updateListing("free_months", value)}
               />
+              <ReadonlyTextField label="Lease deal" value={listing.lease_deal ?? "No deal"} />
+              <ReadonlyTextField label="Term" value={`${formatMonthValue(totalTermMonths)} months total`} />
               <InputField
                 disabled={!canEdit}
                 label="Available from"
@@ -1834,6 +1849,49 @@ function CentsInput({
   );
 }
 
+function MonthSelect({
+  label,
+  value,
+  options,
+  onChange,
+  disabled
+}: {
+  label: string;
+  value: number;
+  options: number[];
+  onChange: (value: number) => void;
+  disabled?: boolean;
+}) {
+  const optionSet = new Set([...options, value]);
+  const normalizedOptions = Array.from(optionSet).sort((first, second) => first - second);
+
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select disabled={disabled} value={value} onChange={(event) => onChange(Number(event.target.value))}>
+        {normalizedOptions.map((option) => (
+          <option key={option} value={option}>
+            {formatMonthValue(option)} mo
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function ReadonlyMoneyField({ label, value }: { label: string; value: number | null }) {
+  return <ReadonlyTextField label={label} value={formatMoneyFromCents(value)} />;
+}
+
+function ReadonlyTextField({ label, value }: { label: string; value: string }) {
+  return (
+    <label className="field readonly-field">
+      <span>{label}</span>
+      <output>{value}</output>
+    </label>
+  );
+}
+
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
     <div className="empty-state">
@@ -1875,68 +1933,31 @@ function areaColor(area: string, fallbackIndex: number) {
   return mapAreaPalette[fallbackIndex % mapAreaPalette.length];
 }
 
-type PaginationMeta = {
-  currentPage: number;
-  pageCount: number;
-  pageSize: number;
-  startIndex: number;
-  endIndex: number;
-  total: number;
-};
+function handleScrollLoadMore(
+  event: UIEvent<HTMLElement>,
+  visibleCount: number,
+  totalCount: number,
+  setVisibleCount: Dispatch<SetStateAction<number>>,
+  batchSize: number
+) {
+  if (visibleCount >= totalCount) {
+    return;
+  }
 
-function paginationMeta(total: number, requestedPage: number, pageSize: number): PaginationMeta {
-  const pageCount = Math.max(1, Math.ceil(total / pageSize));
-  const currentPage = Math.min(Math.max(1, requestedPage), pageCount);
-  const startIndex = total === 0 ? 0 : (currentPage - 1) * pageSize;
-  const endIndex = total === 0 ? 0 : Math.min(startIndex + pageSize, total);
+  const element = event.currentTarget;
+  const remainingScroll = element.scrollHeight - element.scrollTop - element.clientHeight;
 
-  return {
-    currentPage,
-    pageCount,
-    pageSize,
-    startIndex,
-    endIndex,
-    total
-  };
+  if (remainingScroll > 180) {
+    return;
+  }
+
+  setVisibleCount((current) => Math.min(totalCount, current + batchSize));
 }
 
-function PaginationControls({
-  label,
-  onPageChange,
-  pageMeta
-}: {
-  label: string;
-  onPageChange: (page: number) => void;
-  pageMeta: PaginationMeta;
-}) {
+function LoadMoreStatus({ shown, total }: { shown: number; total: number }) {
   return (
-    <div className="pagination-bar">
-      <span>
-        {pageMeta.total === 0
-          ? `No ${label}`
-          : `Showing ${pageMeta.startIndex + 1}-${pageMeta.endIndex} of ${pageMeta.total} ${label}`}
-      </span>
-      <div className="pagination-actions">
-        <button
-          className="ghost-button compact-button"
-          disabled={pageMeta.currentPage <= 1}
-          onClick={() => onPageChange(pageMeta.currentPage - 1)}
-          type="button"
-        >
-          Previous
-        </button>
-        <strong>
-          {pageMeta.currentPage} / {pageMeta.pageCount}
-        </strong>
-        <button
-          className="ghost-button compact-button"
-          disabled={pageMeta.currentPage >= pageMeta.pageCount}
-          onClick={() => onPageChange(pageMeta.currentPage + 1)}
-          type="button"
-        >
-          Next
-        </button>
-      </div>
+    <div className="load-more-status">
+      {shown >= total ? `Showing all ${total}` : `Showing ${shown} of ${total}. Scroll for more.`}
     </div>
   );
 }
@@ -1972,8 +1993,10 @@ function defaultListing(unitID: string): UnitListing {
     market_price_cents: null,
     net_price_cents: 0,
     lease_deal: null,
+    lease_months: 12,
     free_months: 0,
     cash_back_cents: 0,
+    final_price_cents: null,
     available_from: null,
     listed_at: now,
     last_seen_at: now,
@@ -1983,6 +2006,71 @@ function defaultListing(unitID: string): UnitListing {
     created_at: now,
     updated_at: now
   };
+}
+
+function leaseMonthsFromListing(listing: UnitListing) {
+  if (Number.isFinite(listing.lease_months)) {
+    return Math.min(24, Math.max(10, listing.lease_months));
+  }
+
+  const parsedMonths = listing.lease_deal?.match(/(\d+(?:\.\d+)?)\s*MO/i)?.[1];
+  const leaseMonths = parsedMonths ? Number(parsedMonths) : 12;
+
+  if (!Number.isFinite(leaseMonths)) {
+    return 12;
+  }
+
+  return Math.min(24, Math.max(10, leaseMonths));
+}
+
+function applyConcessionPricing(listing: UnitListing, leaseMonths: number): UnitListing {
+  return {
+    ...listing,
+    lease_months: leaseMonths,
+    lease_deal: leaseDealLabel(leaseMonths, listing.free_months),
+    net_price_cents: calculateNetPriceCents(listing.market_price_cents, leaseMonths, listing.free_months),
+    final_price_cents: calculateFinalPriceCents(
+      listing.market_price_cents,
+      leaseMonths,
+      listing.free_months,
+      listing.cash_back_cents
+    )
+  };
+}
+
+function leaseDealLabel(leaseMonths: number, freeMonths: number) {
+  if (freeMonths <= 0) {
+    return `${formatMonthValue(leaseMonths)}MO`;
+  }
+
+  return `${formatMonthValue(leaseMonths)}MO + ${formatMonthValue(freeMonths)}MO FREE`;
+}
+
+function calculateNetPriceCents(marketPriceCents: number | null, leaseMonths: number, freeMonths: number) {
+  if (!marketPriceCents || marketPriceCents <= 0) {
+    return 0;
+  }
+
+  const totalTermMonths = Math.max(1, leaseMonths + freeMonths);
+  return Math.round((marketPriceCents * leaseMonths) / totalTermMonths);
+}
+
+function calculateFinalPriceCents(
+  marketPriceCents: number | null,
+  leaseMonths: number,
+  freeMonths: number,
+  cashBackCents: number
+) {
+  if (!marketPriceCents || marketPriceCents <= 0) {
+    return null;
+  }
+
+  const totalTermMonths = Math.max(1, leaseMonths + freeMonths);
+  return Math.max(0, Math.round((marketPriceCents * leaseMonths - cashBackCents) / totalTermMonths));
+}
+
+function formatMonthValue(value: number) {
+  return Number.isInteger(value) ? `${value}` : value.toFixed(1).replace(/\.0$/, "");
 }
 
 function buildingPayload(building: Building) {

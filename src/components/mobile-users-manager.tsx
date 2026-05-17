@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { RefreshCcw, Search } from "lucide-react";
+import { RefreshCcw, Search, Trash2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { formatDate } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -41,18 +41,32 @@ export function MobileUsersManager() {
   const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [isLoading, setIsLoading] = useState(false);
+  const [isCleaning, setIsCleaning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
-    const { data: userRows, error: userError } = await supabase
+    const userResult = await supabase
       .from("account_profiles")
       .select("id,email,full_name,display_name,phone,role,status,account_kind,oauth_provider,oauth_subject,created_at,updated_at")
-      .eq("account_kind", "mobile")
       .order("created_at", { ascending: false })
       .limit(1000);
+
+    let userRows = userResult.data as AccountProfile[] | null;
+    let userError = userResult.error;
+
+    if (userError && shouldRetryWithoutAccountKind(userError.message)) {
+      const fallback = await supabase
+        .from("account_profiles")
+        .select("id,email,full_name,display_name,phone,role,status,oauth_provider,oauth_subject,created_at,updated_at")
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      userRows = fallback.data as AccountProfile[] | null;
+      userError = fallback.error;
+    }
 
     if (userError) {
       setError(userError.message);
@@ -62,7 +76,7 @@ export function MobileUsersManager() {
       return;
     }
 
-    const nextUsers = (userRows ?? []) as AccountProfile[];
+    const nextUsers = (userRows ?? []).filter(isMobileUserAccount);
     setUsers(nextUsers);
 
     const userIds = nextUsers.map((user) => user.id);
@@ -88,6 +102,29 @@ export function MobileUsersManager() {
 
     setIsLoading(false);
   }, []);
+
+  async function cleanupLegacyAnonymousUsers() {
+    if (!window.confirm(t("mobileUsers.cleanupConfirm"))) {
+      return;
+    }
+
+    setIsCleaning(true);
+    setError(null);
+    setMessage(null);
+
+    const { data, error: cleanupError } = await supabase.rpc("delete_legacy_anonymous_accounts");
+
+    setIsCleaning(false);
+
+    if (cleanupError) {
+      setError(cleanupError.message);
+      return;
+    }
+
+    const deletedCount = Array.isArray(data) ? data.length : 0;
+    setMessage(t("mobileUsers.cleanupDeleted", { count: deletedCount }));
+    await load();
+  }
 
   useEffect(() => {
     load();
@@ -136,13 +173,20 @@ export function MobileUsersManager() {
           <div className="eyebrow">{t("mobileUsers.eyebrow")}</div>
           <h2>{t("mobileUsers.title")}</h2>
         </div>
-        <button className="ghost-button" disabled={isLoading} onClick={load} type="button">
-          <RefreshCcw size={16} />
-          {t("common.refresh")}
-        </button>
+        <div className="header-actions">
+          <button className="ghost-button danger-ghost-button" disabled={isLoading || isCleaning} onClick={cleanupLegacyAnonymousUsers} type="button">
+            <Trash2 size={16} />
+            {isCleaning ? t("mobileUsers.cleaning") : t("mobileUsers.cleanupAnonymous")}
+          </button>
+          <button className="ghost-button" disabled={isLoading} onClick={load} type="button">
+            <RefreshCcw size={16} />
+            {t("common.refresh")}
+          </button>
+        </div>
       </div>
 
       {error ? <div className="message error compact-message">{error}</div> : null}
+      {message ? <div className="message compact-message">{message}</div> : null}
 
       <section className="grid-4">
         <Metric label={t("mobileUsers.totalUsers")} value={summary.total.toLocaleString()} />
@@ -317,4 +361,19 @@ function shortID(id: string) {
 
 function applicationStatusLabel(status: ApplicationStatus) {
   return status.replaceAll("_", " ");
+}
+
+function isMobileUserAccount(user: AccountProfile) {
+  if (user.account_kind === "mobile") return true;
+  if (user.oauth_provider === "apple" || user.oauth_provider === "google") return true;
+  return !hasVisibleEmail(user);
+}
+
+function hasVisibleEmail(user: AccountProfile) {
+  return Boolean(user.email?.trim());
+}
+
+function shouldRetryWithoutAccountKind(message?: string) {
+  const normalized = message?.toLowerCase() ?? "";
+  return normalized.includes("42703") || normalized.includes("account_kind");
 }

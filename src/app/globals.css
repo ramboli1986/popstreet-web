@@ -548,6 +548,13 @@ strong {
   margin-bottom: 14px;
 }
 
+.header-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .console-header {
   margin-bottom: 12px;
 }
@@ -596,6 +603,11 @@ strong {
   border: 1px solid var(--line);
   background: white;
   color: var(--ink);
+}
+
+.danger-ghost-button {
+  border-color: #ffd7d7;
+  color: var(--red);
 }
 
 .danger-button {

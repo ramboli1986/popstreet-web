@@ -166,7 +166,6 @@ export type UnitListing = {
   status: ListingStatus;
   market_price_cents: number | null;
   net_price_cents: number;
-  lease_deal: string | null;
   lease_months: number;
   free_months: number;
   cash_back_cents: number;

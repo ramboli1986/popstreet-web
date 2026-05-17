@@ -393,7 +393,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           building?.area,
           building?.city,
           building?.state,
-          listing.lease_deal
+          leaseDealLabel(listing.lease_months, listing.free_months)
         ]
           .filter(Boolean)
           .some((value) => value!.toLowerCase().includes(query));
@@ -1390,7 +1390,7 @@ function UnitListingRow({
         <span>Cashback {formatMoneyFromCents(listing.cash_back_cents)}</span>
       </div>
       <div className="unit-cell unit-summary-cell">
-        <strong>{listing.lease_deal || "No deal"}</strong>
+        <strong>{leaseDealLabel(listing.lease_months, listing.free_months) || "No deal"}</strong>
         <span>{listing.available_from ? `Move in ${formatDate(listing.available_from)}` : "Move-in not set"}</span>
       </div>
       <div className="unit-cell">
@@ -1526,7 +1526,6 @@ function UnitEditorDialog({
         market_price_cents: listing.market_price_cents,
         lease_months: listing.lease_months,
         net_price_cents: listing.net_price_cents,
-        lease_deal: listing.lease_deal,
         free_months: listing.free_months,
         cash_back_cents: listing.cash_back_cents,
         final_price_cents: listing.final_price_cents,
@@ -1727,7 +1726,7 @@ function UnitEditorDialog({
                 value={listing.free_months}
                 onChange={(value) => updateListing("free_months", value)}
               />
-              <ReadonlyTextField label="Lease deal" value={listing.lease_deal ?? "No deal"} />
+              <ReadonlyTextField label="Lease deal" value={leaseDealLabel(leaseMonths, listing.free_months) || "No deal"} />
               <ReadonlyTextField label="Term" value={`${formatMonthValue(totalTermMonths)} months total`} />
               <InputField
                 disabled={!canEdit}
@@ -1992,7 +1991,6 @@ function defaultListing(unitID: string): UnitListing {
     status: "available",
     market_price_cents: null,
     net_price_cents: 0,
-    lease_deal: null,
     lease_months: 12,
     free_months: 0,
     cash_back_cents: 0,
@@ -2013,21 +2011,13 @@ function leaseMonthsFromListing(listing: UnitListing) {
     return Math.min(24, Math.max(10, listing.lease_months));
   }
 
-  const parsedMonths = listing.lease_deal?.match(/(\d+(?:\.\d+)?)\s*MO/i)?.[1];
-  const leaseMonths = parsedMonths ? Number(parsedMonths) : 12;
-
-  if (!Number.isFinite(leaseMonths)) {
-    return 12;
-  }
-
-  return Math.min(24, Math.max(10, leaseMonths));
+  return 12;
 }
 
 function applyConcessionPricing(listing: UnitListing, leaseMonths: number): UnitListing {
   return {
     ...listing,
     lease_months: leaseMonths,
-    lease_deal: leaseDealLabel(leaseMonths, listing.free_months),
     net_price_cents: calculateNetPriceCents(listing.market_price_cents, leaseMonths, listing.free_months),
     final_price_cents: calculateFinalPriceCents(
       listing.market_price_cents,
@@ -2040,7 +2030,7 @@ function applyConcessionPricing(listing: UnitListing, leaseMonths: number): Unit
 
 function leaseDealLabel(leaseMonths: number, freeMonths: number) {
   if (freeMonths <= 0) {
-    return `${formatMonthValue(leaseMonths)}MO`;
+    return "";
   }
 
   return `${formatMonthValue(leaseMonths)}MO + ${formatMonthValue(freeMonths)}MO FREE`;

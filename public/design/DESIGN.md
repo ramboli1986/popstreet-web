@@ -145,7 +145,7 @@
 - 表格列：
   - **Unit**（building name + #unit_number，副行显示 bedroom/bath/sqft）
   - **Status** 徽章
-  - **Deal** — 把 `free_months` `cash_back_cents` `lease_deal` 揉成一颗"deal chip"。例如：`+2mo · $1,500 back`
+  - **Deal** — 把 `lease_months` `free_months` `cash_back_cents` 揉成一颗"deal chip"。例如：`12MO + 1MO FREE · $1,500 back`
   - **Market → Net** — 双行显示市场价划线 + 净价 + 折扣百分比（color 取决于幅度）
   - **Listed** / **Last seen**（相对时间："2h ago"），`last_seen_at` 超过 3 天的高亮警告
   - **Source** badge

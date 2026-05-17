@@ -31,8 +31,8 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const canEdit = canEditInventory(profile?.role, profile?.account_kind);
-  const canDelete = canManageAccounts(profile?.role, profile?.account_kind);
+  const canEdit = canEditInventory(profile?.role, profile?.account_kind, profile?.status);
+  const canDelete = canManageAccounts(profile?.role, profile?.account_kind, profile?.status);
 
   const loadCompanies = useCallback(async () => {
     setIsLoading(true);

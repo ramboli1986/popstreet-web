@@ -143,7 +143,11 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
       .insert({
         id: nextSession.user.id,
         email: nextSession.user.email ?? "",
-        full_name: nextSession.user.user_metadata?.full_name ?? null
+        full_name: nextSession.user.user_metadata?.full_name ?? null,
+        role: "viewer",
+        status: "pending",
+        account_kind: "admin",
+        email_confirmed_at: nextSession.user.email_confirmed_at ?? null
       })
       .select("*")
       .single();
@@ -259,7 +263,45 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
     return <AuthPanel />;
   }
 
-  const canManageAccountAccess = canManageAccounts(profile?.role, profile?.account_kind);
+  const hasActiveAdminAccess = profile?.account_kind === "admin" && profile.status === "active";
+  const canManageAccountAccess = canManageAccounts(profile?.role, profile?.account_kind, profile?.status);
+
+  if (!hasActiveAdminAccess) {
+    return (
+      <main className="auth-page">
+        <section className="auth-card">
+          <div className="auth-card-language">
+            <div className="language-switch" aria-label={t("shell.language")}>
+              <button className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")} type="button">
+                {t("shell.english")}
+              </button>
+              <button className={language === "zh" ? "active" : ""} onClick={() => setLanguage("zh")} type="button">
+                {t("shell.chinese")}
+              </button>
+            </div>
+          </div>
+          <div className="brand-row">
+            <div className="brand-mark">P</div>
+            <div className="brand-copy">
+              <div className="eyebrow">{t("shell.adminConsole")}</div>
+              <strong>{session.user.email}</strong>
+            </div>
+          </div>
+          <h1>{t("shell.noAdminAccessTitle")}</h1>
+          <p className="muted" style={{ marginTop: 10 }}>
+            {profile?.status === "pending" ? t("shell.noAdminAccessPending") : t("shell.noAdminAccessBody")}
+          </p>
+          {message ? <div className="message" style={{ marginTop: 16 }}>{message}</div> : null}
+          <div className="auth-form">
+            <button className="button" onClick={signOut} type="button">
+              <LogOut size={15} />
+              {t("shell.signOut")}
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="admin-console">

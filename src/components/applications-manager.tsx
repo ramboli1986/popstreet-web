@@ -71,7 +71,7 @@ const FILTER_ORDER: { value: StatusFilter; label: string }[] = [
 ];
 
 export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
-  const canEdit = canEditInventory(profile?.role, profile?.account_kind);
+  const canEdit = canEditInventory(profile?.role, profile?.account_kind, profile?.status);
 
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicants, setApplicants] = useState<Map<string, ApplicantLite>>(new Map());

@@ -5,6 +5,11 @@ import { Building2, LockKeyhole, Mail } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useI18n } from "@/lib/i18n";
 
+const productionAuthBaseURL =
+  process.env.NEXT_PUBLIC_ADMIN_SITE_URL ??
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  "https://popstreet-web.vercel.app";
+
 export function AuthPanel() {
   const { language, setLanguage, t } = useI18n();
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -28,7 +33,7 @@ export function AuthPanel() {
             email,
             password,
             options: {
-              emailRedirectTo: window.location.origin,
+              emailRedirectTo: authCallbackURL(),
               data: {
                 full_name: fullName
               }
@@ -129,4 +134,13 @@ export function AuthPanel() {
       </section>
     </main>
   );
+}
+
+function authCallbackURL() {
+  const baseURL = isLocalOrigin(window.location.origin) ? window.location.origin : productionAuthBaseURL;
+  return `${baseURL.replace(/\/$/, "")}/auth/callback`;
+}
+
+function isLocalOrigin(origin: string) {
+  return origin.startsWith("http://localhost") || origin.startsWith("http://127.0.0.1");
 }

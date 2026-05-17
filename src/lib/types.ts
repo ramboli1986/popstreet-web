@@ -9,9 +9,11 @@ export type AccountProfile = {
   full_name: string | null;
   role: AdminRole;
   status: AccountStatus;
-  account_kind: AccountKind;
+  account_kind?: AccountKind | null;
+  is_mobile_user?: boolean | null;
   oauth_provider: "apple" | "google" | null;
   oauth_subject: string | null;
+  email_confirmed_at?: string | null;
   display_name: string | null;
   phone: string | null;
   created_at: string;

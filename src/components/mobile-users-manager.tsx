@@ -51,17 +51,17 @@ export function MobileUsersManager() {
 
     const userResult = await supabase
       .from("account_profiles")
-      .select("id,email,full_name,display_name,phone,role,status,account_kind,oauth_provider,oauth_subject,created_at,updated_at")
+      .select("id,email,full_name,display_name,phone,role,status,account_kind,is_mobile_user,oauth_provider,oauth_subject,created_at,updated_at")
       .order("created_at", { ascending: false })
       .limit(1000);
 
     let userRows = userResult.data as AccountProfile[] | null;
     let userError = userResult.error;
 
-    if (userError && shouldRetryWithoutAccountKind(userError.message)) {
+    if (userError && shouldRetryWithoutProfileColumns(userError.message)) {
       const fallback = await supabase
         .from("account_profiles")
-        .select("id,email,full_name,display_name,phone,role,status,oauth_provider,oauth_subject,created_at,updated_at")
+        .select("id,email,full_name,display_name,role,status,oauth_provider,oauth_subject,created_at,updated_at")
         .order("created_at", { ascending: false })
         .limit(1000);
       userRows = fallback.data as AccountProfile[] | null;
@@ -364,6 +364,7 @@ function applicationStatusLabel(status: ApplicationStatus) {
 }
 
 function isMobileUserAccount(user: AccountProfile) {
+  if (user.is_mobile_user) return true;
   if (user.account_kind === "mobile") return true;
   if (user.oauth_provider === "apple" || user.oauth_provider === "google") return true;
   return !hasVisibleEmail(user);
@@ -373,7 +374,12 @@ function hasVisibleEmail(user: AccountProfile) {
   return Boolean(user.email?.trim());
 }
 
-function shouldRetryWithoutAccountKind(message?: string) {
+function shouldRetryWithoutProfileColumns(message?: string) {
   const normalized = message?.toLowerCase() ?? "";
-  return normalized.includes("42703") || normalized.includes("account_kind");
+  return (
+    normalized.includes("42703") ||
+    normalized.includes("account_kind") ||
+    normalized.includes("is_mobile_user") ||
+    normalized.includes("phone")
+  );
 }

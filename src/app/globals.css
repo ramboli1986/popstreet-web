@@ -711,6 +711,11 @@ strong {
   color: var(--red);
 }
 
+.status-pill.pending {
+  background: var(--orange-soft);
+  color: var(--orange);
+}
+
 .dashboard-page {
   display: grid;
   gap: 18px;
@@ -1183,7 +1188,8 @@ strong {
 .search-input,
 .unit-table input,
 .unit-table select,
-.compact-field input {
+.compact-field input,
+.compact-field select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -1199,7 +1205,8 @@ strong {
 .search-input,
 .unit-table input,
 .unit-table select,
-.compact-field input {
+.compact-field input,
+.compact-field select {
   min-height: 34px;
   padding: 7px 9px;
 }
@@ -1225,7 +1232,8 @@ strong {
 .search-box:focus-within,
 .unit-table input:focus,
 .unit-table select:focus,
-.compact-field input:focus {
+.compact-field input:focus,
+.compact-field select:focus {
   border-color: rgb(64 158 255 / 70%);
   box-shadow: 0 0 0 3px rgb(64 158 255 / 12%);
 }

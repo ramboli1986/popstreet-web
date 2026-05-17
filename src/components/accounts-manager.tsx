@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RefreshCcw, Save } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useI18n } from "@/lib/i18n";
@@ -8,10 +8,15 @@ import type { AccountKind, AccountProfile, AccountStatus, AdminRole } from "@/li
 
 const roles: AdminRole[] = ["super_admin", "admin", "editor", "viewer"];
 const statuses: AccountStatus[] = ["active", "pending", "suspended"];
+const statusFilters: Array<AccountStatus | "all"> = ["all", "pending", "active", "suspended"];
+const verificationFilters = ["all", "verified", "unverified"] as const;
+type VerificationFilter = (typeof verificationFilters)[number];
 
 export function AccountsManager({ currentProfile }: { currentProfile: AccountProfile | null }) {
   const { t } = useI18n();
   const [accounts, setAccounts] = useState<AccountProfile[]>([]);
+  const [statusFilter, setStatusFilter] = useState<AccountStatus | "all">("all");
+  const [verificationFilter, setVerificationFilter] = useState<VerificationFilter>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [savingID, setSavingID] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +68,11 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
       return;
     }
 
+    if (account.status === "active" && !isEmailVerified(account)) {
+      setError(t("accounts.verifyBeforeActive"));
+      return;
+    }
+
     setSavingID(account.id);
     setError(null);
     setMessage(null);
@@ -83,6 +93,18 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
     updateDraft(account.id, data as AccountProfile);
     setMessage(t("accounts.updated"));
   }
+
+  const filteredAccounts = useMemo(() => {
+    return accounts.filter((account) => {
+      const matchesStatus = statusFilter === "all" || account.status === statusFilter;
+      const verified = isEmailVerified(account);
+      const matchesVerification =
+        verificationFilter === "all" ||
+        (verificationFilter === "verified" && verified) ||
+        (verificationFilter === "unverified" && !verified);
+      return matchesStatus && matchesVerification;
+    });
+  }, [accounts, statusFilter, verificationFilter]);
 
   return (
     <>
@@ -107,23 +129,54 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
             <h3>{t("accounts.leastPrivilege")}</h3>
           </div>
           <span className="count-pill">
-            {accounts.length} {t("accounts.accounts")}
+            {filteredAccounts.length} / {accounts.length} {t("accounts.accounts")}
           </span>
         </div>
 
+        <div className="filter-row" style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "0 0 14px" }}>
+          <label className="compact-field" style={{ minWidth: 180 }}>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AccountStatus | "all")}>
+              {statusFilters.map((status) => (
+                <option key={status} value={status}>
+                  {status === "all" ? t("accounts.allStatuses") : t(`statuses.${status}`)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="compact-field" style={{ minWidth: 190 }}>
+            <select value={verificationFilter} onChange={(event) => setVerificationFilter(event.target.value as VerificationFilter)}>
+              {verificationFilters.map((filter) => (
+                <option key={filter} value={filter}>
+                  {verificationFilterLabel(filter, t)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
         <div className="accounts-list">
-          {accounts.map((account) => {
+          {filteredAccounts.map((account) => {
             const isSelf = account.id === currentProfile?.id;
             const kind = accountKind(account);
             const canEditAccount = isAdminAccount(account);
             const canAssignSuperAdmin = currentProfile?.role === "super_admin" || account.role !== "super_admin";
+            const verified = isEmailVerified(account);
+            const hasAccess = account.status === "active";
 
             return (
               <div className="account-row" key={account.id}>
                 <div>
                   <strong>{account.full_name || account.display_name || account.email || t("accounts.unknownUser")}</strong>
                   <p className="muted">{account.email || t("accounts.noEmail")}</p>
-                  <span className="status-pill active">{t(kind === "admin" ? "accounts.adminAccount" : "accounts.mobileUser")}</span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                    <span className={`status-pill ${hasAccess ? "active" : "pending"}`}>
+                      {hasAccess ? t(kind === "admin" ? "accounts.adminAccount" : "accounts.mobileUser") : t("accounts.noAccess")}
+                    </span>
+                    <span className={`status-pill ${account.status}`}>{t(`statuses.${account.status}`)}</span>
+                    <span className={`status-pill ${verified ? "active" : "pending"}`}>
+                      {verified ? t("accounts.emailVerified") : t("accounts.emailUnverified")}
+                    </span>
+                  </div>
                 </div>
 
                 <label className="field">
@@ -151,7 +204,7 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
                     onChange={(event) => updateDraft(account.id, { status: event.target.value as AccountStatus })}
                   >
                     {statuses.map((status) => (
-                      <option disabled={isSelf && status !== "active"} key={status} value={status}>
+                      <option disabled={(isSelf && status !== "active") || (!verified && status === "active")} key={status} value={status}>
                         {t(`statuses.${status}`)}
                       </option>
                     ))}
@@ -183,6 +236,16 @@ function isAdminAccount(account: AccountProfile) {
 
 function hasVisibleEmail(account: AccountProfile) {
   return Boolean(account.email?.trim());
+}
+
+function isEmailVerified(account: AccountProfile) {
+  return Boolean(account.email_confirmed_at);
+}
+
+function verificationFilterLabel(filter: VerificationFilter, t: (key: string) => string) {
+  if (filter === "verified") return t("accounts.emailVerified");
+  if (filter === "unverified") return t("accounts.emailUnverified");
+  return t("accounts.allVerification");
 }
 
 function shouldRetryWithoutAccountKind(message?: string) {

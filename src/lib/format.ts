@@ -64,12 +64,22 @@ export function statusLabel(status: AccountStatus) {
   return labels[status];
 }
 
-export function canEditInventory(role: AdminRole | null | undefined, accountKind: AccountKind | null | undefined = "admin") {
+export function canEditInventory(
+  role: AdminRole | null | undefined,
+  accountKind: AccountKind | null | undefined = "admin",
+  status: AccountStatus | null | undefined = "active"
+) {
+  if (status !== "active") return false;
   if (accountKind === "mobile") return false;
   return role === "super_admin" || role === "admin" || role === "editor";
 }
 
-export function canManageAccounts(role: AdminRole | null | undefined, accountKind: AccountKind | null | undefined = "admin") {
+export function canManageAccounts(
+  role: AdminRole | null | undefined,
+  accountKind: AccountKind | null | undefined = "admin",
+  status: AccountStatus | null | undefined = "active"
+) {
+  if (status !== "active") return false;
   if (accountKind === "mobile") return false;
   return role === "super_admin" || role === "admin";
 }

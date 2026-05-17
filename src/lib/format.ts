@@ -1,4 +1,4 @@
-import type { AdminRole, AccountStatus } from "./types";
+import type { AccountKind, AccountStatus, AdminRole } from "./types";
 
 export function formatMoneyFromCents(value: number | null | undefined) {
   if (value == null) {
@@ -64,10 +64,12 @@ export function statusLabel(status: AccountStatus) {
   return labels[status];
 }
 
-export function canEditInventory(role: AdminRole | null | undefined) {
+export function canEditInventory(role: AdminRole | null | undefined, accountKind: AccountKind | null | undefined = "admin") {
+  if (accountKind === "mobile") return false;
   return role === "super_admin" || role === "admin" || role === "editor";
 }
 
-export function canManageAccounts(role: AdminRole | null | undefined) {
+export function canManageAccounts(role: AdminRole | null | undefined, accountKind: AccountKind | null | undefined = "admin") {
+  if (accountKind === "mobile") return false;
   return role === "super_admin" || role === "admin";
 }

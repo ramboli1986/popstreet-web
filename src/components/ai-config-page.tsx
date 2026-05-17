@@ -76,7 +76,7 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const canEdit = canManageAccounts(profile?.role);
+  const canEdit = canManageAccounts(profile?.role, profile?.account_kind);
   const isDirty = JSON.stringify(draft) !== JSON.stringify(config);
 
   const loadConfig = useCallback(async () => {

@@ -7,6 +7,7 @@ import {
   BriefcaseBusiness,
   Building2,
   ChevronRight,
+  ClipboardList,
   DoorOpen,
   LayoutDashboard,
   LogOut,
@@ -14,20 +15,32 @@ import {
   Search,
   Settings2,
   ShieldCheck,
+  Smartphone,
   UsersRound
 } from "lucide-react";
 import { AuthPanel } from "./auth-panel";
 import { AccountsManager } from "./accounts-manager";
 import { AIConfigPage } from "./ai-config-page";
+import { ApplicationsManager } from "./applications-manager";
 import { BuildingManager } from "./building-manager";
 import { CompanyManager } from "./company-manager";
 import { Dashboard } from "./dashboard";
+import { MobileUsersManager } from "./mobile-users-manager";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
 import { canManageAccounts } from "@/lib/format";
 import { I18nProvider, useI18n } from "@/lib/i18n";
 import type { AccountProfile } from "@/lib/types";
 
-type ViewKey = "dashboard" | "building" | "companies" | "units" | "map" | "aiConfig" | "accounts";
+type ViewKey =
+  | "dashboard"
+  | "building"
+  | "companies"
+  | "units"
+  | "map"
+  | "applications"
+  | "mobileUsers"
+  | "aiConfig"
+  | "accounts";
 type AdminAppProps = {
   initialView?: ViewKey;
 };
@@ -38,6 +51,8 @@ const routeByView: Record<ViewKey, string> = {
   companies: "/companies",
   units: "/units",
   map: "/map",
+  applications: "/applications",
+  mobileUsers: "/mobile-users",
   aiConfig: "/ai-config",
   accounts: "/accounts"
 };
@@ -54,6 +69,12 @@ function viewFromPath(pathname: string): ViewKey {
   }
   if (pathname.startsWith("/map")) {
     return "map";
+  }
+  if (pathname.startsWith("/applications")) {
+    return "applications";
+  }
+  if (pathname.startsWith("/mobile-users")) {
+    return "mobileUsers";
   }
   if (pathname.startsWith("/ai-config")) {
     return "aiConfig";
@@ -191,6 +212,8 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
       { key: "companies" as const, label: t("nav.companies"), icon: BriefcaseBusiness },
       { key: "units" as const, label: t("nav.units"), icon: DoorOpen },
       { key: "map" as const, label: t("nav.map"), icon: MapPinned },
+      { key: "applications" as const, label: t("nav.applications"), icon: ClipboardList },
+      { key: "mobileUsers" as const, label: t("nav.mobileUsers"), icon: Smartphone, requiresAccountAdmin: true },
       { key: "aiConfig" as const, label: t("nav.aiConfig"), icon: Settings2 },
       { key: "accounts" as const, label: t("nav.accounts"), icon: UsersRound, requiresAccountAdmin: true }
     ],
@@ -236,6 +259,8 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
     return <AuthPanel />;
   }
 
+  const canManageAccountAccess = canManageAccounts(profile?.role, profile?.account_kind);
+
   return (
     <main className="admin-console">
       <aside className="console-sidebar">
@@ -250,7 +275,7 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
         <nav className="sidebar-nav" aria-label="Admin navigation">
           <div className="sidebar-section-label">{t("shell.workspace")}</div>
           {navItems
-            .filter((item) => !item.requiresAccountAdmin || canManageAccounts(profile?.role))
+            .filter((item) => !item.requiresAccountAdmin || canManageAccountAccess)
             .map((item) => {
               const Icon = item.icon;
               return (
@@ -330,7 +355,7 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
 
         <section className="console-content">
           {message ? <div className="message" style={{ marginBottom: 14 }}>{message}</div> : null}
-          {profile?.role === "viewer" ? (
+          {profile?.account_kind !== "mobile" && profile?.role === "viewer" ? (
             <div className="message" style={{ marginBottom: 14 }}>
               {t("shell.viewerAccess")}
               <button className="ghost-button" onClick={claimFirstAdmin} style={{ marginLeft: 12 }} type="button">
@@ -344,8 +369,10 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
           {view === "companies" ? <CompanyManager profile={profile} /> : null}
           {view === "units" ? <BuildingManager mode="units" profile={profile} /> : null}
           {view === "map" ? <BuildingManager mode="map" profile={profile} /> : null}
+          {view === "applications" ? <ApplicationsManager profile={profile} /> : null}
+          {view === "mobileUsers" && canManageAccountAccess ? <MobileUsersManager /> : null}
           {view === "aiConfig" ? <AIConfigPage profile={profile} /> : null}
-          {view === "accounts" && canManageAccounts(profile?.role) ? <AccountsManager currentProfile={profile} /> : null}
+          {view === "accounts" && canManageAccountAccess ? <AccountsManager currentProfile={profile} /> : null}
         </section>
       </div>
     </main>

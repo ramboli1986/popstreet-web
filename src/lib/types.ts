@@ -1,5 +1,6 @@
 export type AdminRole = "super_admin" | "admin" | "editor" | "viewer";
 export type AccountStatus = "active" | "pending" | "suspended";
+export type AccountKind = "admin" | "mobile";
 export type ListingStatus = "available" | "unavailable" | "pending" | "rented" | "archived";
 
 export type AccountProfile = {
@@ -8,6 +9,11 @@ export type AccountProfile = {
   full_name: string | null;
   role: AdminRole;
   status: AccountStatus;
+  account_kind: AccountKind;
+  oauth_provider: "apple" | "google" | null;
+  oauth_subject: string | null;
+  display_name: string | null;
+  phone: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -107,13 +113,16 @@ export type TourRequest = {
 
 export type ApplicationStatus =
   | "submitted"
-  | "link_provided"
-  | "ops_review"
-  | "in_progress"
+  | "ops_in_progress"
+  | "link_ready"
   | "submitted_to_lo"
+  | "under_review"
   | "accepted"
   | "rejected"
-  | "withdrawn";
+  | "cashback_pending"
+  | "cashback_paid"
+  | "cancelled"
+  | "no_response";
 
 export type Application = {
   id: string;
@@ -122,9 +131,14 @@ export type Application = {
   unit_id: string | null;
   listing_id: string | null;
   status: ApplicationStatus;
-  external_link_used: string | null;
   notes: string | null;
   fee_cents: number | null;
+  broker_link: string | null;
+  broker_link_sent_at: string | null;
+  submitted_to_lo_at: string | null;
+  accepted_at: string | null;
+  cashback_amount_cents: number | null;
+  cashback_paid_at: string | null;
   created_at: string;
   updated_at: string;
 };

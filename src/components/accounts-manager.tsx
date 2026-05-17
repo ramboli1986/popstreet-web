@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RefreshCcw, Save } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useI18n } from "@/lib/i18n";
-import type { AccountProfile, AccountStatus, AdminRole } from "@/lib/types";
+import type { AccountKind, AccountProfile, AccountStatus, AdminRole } from "@/lib/types";
 
 const roles: AdminRole[] = ["super_admin", "admin", "editor", "viewer"];
 const statuses: AccountStatus[] = ["active", "pending", "suspended"];
+const accountKindFilters: Array<AccountKind | "all"> = ["admin", "mobile", "all"];
 
 export function AccountsManager({ currentProfile }: { currentProfile: AccountProfile | null }) {
   const { t } = useI18n();
   const [accounts, setAccounts] = useState<AccountProfile[]>([]);
+  const [kindFilter, setKindFilter] = useState<AccountKind | "all">("admin");
   const [isLoading, setIsLoading] = useState(false);
   const [savingID, setSavingID] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +46,11 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
   }
 
   async function saveAccount(account: AccountProfile) {
+    if (accountKind(account) !== "admin") {
+      setError(t("accounts.mobileLocked"));
+      return;
+    }
+
     setSavingID(account.id);
     setError(null);
     setMessage(null);
@@ -64,6 +71,18 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
     updateDraft(account.id, data as AccountProfile);
     setMessage(t("accounts.updated"));
   }
+
+  const filteredAccounts = useMemo(() => {
+    if (kindFilter === "all") return accounts;
+    return accounts.filter((account) => accountKind(account) === kindFilter);
+  }, [accounts, kindFilter]);
+
+  const kindCounts = useMemo(() => {
+    const counts = new Map<AccountKind | "all", number>([["all", accounts.length]]);
+    counts.set("admin", accounts.filter((account) => accountKind(account) === "admin").length);
+    counts.set("mobile", accounts.filter((account) => accountKind(account) === "mobile").length);
+    return counts;
+  }, [accounts]);
 
   return (
     <>
@@ -88,25 +107,53 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
             <h3>{t("accounts.leastPrivilege")}</h3>
           </div>
           <span className="count-pill">
-            {accounts.length} {t("accounts.accounts")}
+            {filteredAccounts.length} / {accounts.length} {t("accounts.accounts")}
           </span>
         </div>
 
+        <div className="filter-row" style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "0 0 14px" }}>
+          {accountKindFilters.map((option) => {
+            const active = option === kindFilter;
+            return (
+              <button
+                className={`ghost-button compact-button ${active ? "active" : ""}`}
+                key={option}
+                onClick={() => setKindFilter(option)}
+                style={
+                  active
+                    ? { background: "var(--brand-soft)", borderColor: "var(--brand)", color: "var(--brand)" }
+                    : undefined
+                }
+                type="button"
+              >
+                {accountKindFilterLabel(option, t)}
+                <span style={{ marginLeft: 6, opacity: 0.6 }}>{kindCounts.get(option) ?? 0}</span>
+              </button>
+            );
+          })}
+        </div>
+
         <div className="accounts-list">
-          {accounts.map((account) => {
+          {filteredAccounts.map((account) => {
             const isSelf = account.id === currentProfile?.id;
+            const kind = accountKind(account);
+            const isAdminAccount = kind === "admin";
             const canAssignSuperAdmin = currentProfile?.role === "super_admin" || account.role !== "super_admin";
 
             return (
               <div className="account-row" key={account.id}>
                 <div>
-                  <strong>{account.full_name || account.email}</strong>
-                  <p className="muted">{account.email}</p>
+                  <strong>{account.full_name || account.display_name || account.email || t("accounts.unknownUser")}</strong>
+                  <p className="muted">{account.email || t("accounts.noEmail")}</p>
+                  <span className={`status-pill ${kind === "admin" ? "active" : ""}`}>
+                    {t(kind === "admin" ? "accounts.adminAccount" : "accounts.mobileUser")}
+                  </span>
                 </div>
 
                 <label className="field">
                   <span>{t("accounts.role")}</span>
                   <select
+                    disabled={!isAdminAccount}
                     value={account.role}
                     onChange={(event) => updateDraft(account.id, { role: event.target.value as AdminRole })}
                   >
@@ -123,6 +170,7 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
                 <label className="field">
                   <span>{t("accounts.status")}</span>
                   <select
+                    disabled={!isAdminAccount}
                     value={account.status}
                     onChange={(event) => updateDraft(account.id, { status: event.target.value as AccountStatus })}
                   >
@@ -134,7 +182,7 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
                   </select>
                 </label>
 
-                <button className="button" disabled={savingID === account.id} onClick={() => saveAccount(account)} type="button">
+                <button className="button" disabled={!isAdminAccount || savingID === account.id} onClick={() => saveAccount(account)} type="button">
                   <Save size={16} />
                   {savingID === account.id ? t("common.saving") : t("common.save")}
                 </button>
@@ -145,4 +193,14 @@ export function AccountsManager({ currentProfile }: { currentProfile: AccountPro
       </section>
     </>
   );
+}
+
+function accountKind(account: AccountProfile): AccountKind {
+  return account.account_kind ?? "admin";
+}
+
+function accountKindFilterLabel(kind: AccountKind | "all", t: (key: string) => string) {
+  if (kind === "all") return t("accounts.allAccounts");
+  if (kind === "mobile") return t("accounts.mobileUsers");
+  return t("accounts.adminAccounts");
 }

@@ -704,6 +704,11 @@ strong {
   gap: 18px;
 }
 
+.mobile-users-page {
+  display: grid;
+  gap: 12px;
+}
+
 .page-hero {
   display: flex;
   align-items: flex-start;

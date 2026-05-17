@@ -114,7 +114,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const canEdit = canEditInventory(profile?.role);
+  const canEdit = canEditInventory(profile?.role, profile?.account_kind);
 
   const loadBuildings = useCallback(async () => {
     setIsLoading(true);

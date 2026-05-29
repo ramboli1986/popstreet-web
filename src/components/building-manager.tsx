@@ -133,7 +133,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [isBuildingEditorOpen, setIsBuildingEditorOpen] = useState(false);
   const [unitListBuilding, setUnitListBuilding] = useState<Building | null>(null);
   const [unitDialogDraft, setUnitDialogDraft] = useState<UnitWithListing | null>(null);
-  const [deletingUnitID, setDeletingUnitID] = useState<string | null>(null);
+  const [unlistingUnitID, setUnlistingUnitID] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
@@ -709,33 +709,50 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setUnitListBuilding(building);
   }
 
-  async function deleteUnitFromList(unit: UnitWithListing) {
+  async function unlistUnitFromList(unit: UnitWithListing) {
     if (!canEdit || unit.id.startsWith("new-")) {
       return;
     }
 
-    const confirmed = window.confirm(`Delete unit ${unit.unit_number || unit.name || "this unit"}? This also removes its listing history.`);
+    const confirmed = window.confirm(`Unlist unit ${unit.unit_number || unit.name || "this unit"}?`);
 
     if (!confirmed) {
       return;
     }
 
-    setDeletingUnitID(unit.id);
+    setUnlistingUnitID(unit.id);
     setError(null);
     setMessage(null);
 
-    const { error: deleteError } = await supabase.from("units").delete().eq("id", unit.id);
+    const now = new Date().toISOString();
+    const listing = unit.listing ?? defaultListing(unit.id);
+    const listingPayload = {
+      unit_id: unit.id,
+      status: "unavailable" as ListingStatus,
+      market_price_cents: listing.market_price_cents,
+      lease_months: listing.lease_months,
+      net_price_cents: listing.net_price_cents,
+      free_months: listing.free_months,
+      cash_back_cents: listing.cash_back_cents,
+      final_price_cents: listing.final_price_cents,
+      available_from: listing.available_from,
+      source: listing.source || "admin",
+      last_seen_at: now,
+      unavailable_at: now
+    };
 
-    setDeletingUnitID(null);
+    const result = listing.id
+      ? await supabase.from("unit_listings").update(listingPayload).eq("id", listing.id)
+      : await supabase.from("unit_listings").insert(listingPayload);
 
-    if (deleteError) {
-      setError(deleteError.message);
+    setUnlistingUnitID(null);
+
+    if (result.error) {
+      setError(result.error.message);
       return;
     }
 
-    setUnitDialogDraft((current) => (current?.id === unit.id ? null : current));
-    setUnitImages((current) => current.filter((image) => image.unit_id !== unit.id));
-    setMessage("Unit deleted.");
+    setMessage("Unit unlisted.");
     await loadUnits();
     await loadBuildings();
   }
@@ -1025,7 +1042,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               metrics={buildingMetrics}
               selectedBuilding={selectedBuilding}
               onDelete={deleteBuilding}
-              onAddUnit={openAddUnitDialog}
               onLoadMore={(event) =>
                 handleScrollLoadMore(
                   event,
@@ -1062,11 +1078,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         <BuildingUnitListDialog
           building={unitListBuilding}
           canEdit={canEdit}
-          deletingUnitID={deletingUnitID}
           onAddUnit={openAddUnitDialog}
           onClose={() => setUnitListBuilding(null)}
-          onDeleteUnit={deleteUnitFromList}
           onEditUnit={openEditUnitDialog}
+          onUnlistUnit={unlistUnitFromList}
+          unlistingUnitID={unlistingUnitID}
           units={unitListUnits}
         />
       ) : null}
@@ -1094,7 +1110,6 @@ function BuildingTable({
   filteredCount,
   metrics,
   selectedBuilding,
-  onAddUnit,
   onDelete,
   onLoadMore,
   onOpen,
@@ -1105,7 +1120,6 @@ function BuildingTable({
   filteredCount: number;
   metrics: Map<string, BuildingMetric>;
   selectedBuilding: Building | null;
-  onAddUnit: (building: Building) => void;
   onDelete: (building: Building) => void;
   onLoadMore: (event: UIEvent<HTMLDivElement>) => void;
   onOpen: (building: Building) => void;
@@ -1134,6 +1148,7 @@ function BuildingTable({
           {buildings.map((building, index) => {
             const metric = metrics.get(building.id);
             const isSelected = selectedBuilding?.id === building.id;
+            const buildingWebsite = building.website;
             const companyName = buildingCompanyName(building);
 
             return (
@@ -1151,17 +1166,20 @@ function BuildingTable({
               >
                 <td className="row-index">{index + 1}</td>
                 <td>
-                  <button
-                    className="table-primary-link table-name-action"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onOpen(building);
-                    }}
-                    onKeyDown={(event) => event.stopPropagation()}
-                    type="button"
-                  >
-                    {building.name}
-                  </button>
+                  {buildingWebsite ? (
+                    <a
+                      className="table-primary-link table-name-action"
+                      href={buildingWebsite}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {building.name}
+                    </a>
+                  ) : (
+                    <span className="table-primary-text">{building.name}</span>
+                  )}
                   <div className="table-subtext">{building.address}</div>
                 </td>
                 <td>
@@ -1186,13 +1204,13 @@ function BuildingTable({
                       disabled={!canEdit}
                       onClick={(event) => {
                         event.stopPropagation();
-                        onAddUnit(building);
+                        onOpen(building);
                       }}
                       onKeyDown={(event) => event.stopPropagation()}
                       type="button"
                     >
-                      <Plus size={14} />
-                      Add unit
+                      <Pencil size={14} />
+                      Edit building
                     </button>
                     <button
                       className="icon-button danger"
@@ -1499,20 +1517,20 @@ function UnitManager({
 function BuildingUnitListDialog({
   building,
   canEdit,
-  deletingUnitID,
   onAddUnit,
   onClose,
-  onDeleteUnit,
   onEditUnit,
+  onUnlistUnit,
+  unlistingUnitID,
   units
 }: {
   building: Building;
   canEdit: boolean;
-  deletingUnitID: string | null;
   onAddUnit: (building: Building) => void;
   onClose: () => void;
-  onDeleteUnit: (unit: UnitWithListing) => Promise<void> | void;
   onEditUnit: (unit: UnitWithListing) => void;
+  onUnlistUnit: (unit: UnitWithListing) => Promise<void> | void;
+  unlistingUnitID: string | null;
   units: UnitWithListing[];
 }) {
   const availableCount = units.filter((unit) => (unit.listing ?? defaultListing(unit.id)).status === "available").length;
@@ -1559,10 +1577,10 @@ function BuildingUnitListDialog({
               {units.map((unit) => (
                 <BuildingUnitListRow
                   canEdit={canEdit}
-                  isDeleting={deletingUnitID === unit.id}
+                  isUnlisting={unlistingUnitID === unit.id}
                   key={unit.id}
-                  onDeleteUnit={onDeleteUnit}
                   onEditUnit={onEditUnit}
+                  onUnlistUnit={onUnlistUnit}
                   unit={unit}
                 />
               ))}
@@ -1576,18 +1594,19 @@ function BuildingUnitListDialog({
 
 function BuildingUnitListRow({
   canEdit,
-  isDeleting,
-  onDeleteUnit,
+  isUnlisting,
   onEditUnit,
+  onUnlistUnit,
   unit
 }: {
   canEdit: boolean;
-  isDeleting: boolean;
-  onDeleteUnit: (unit: UnitWithListing) => Promise<void> | void;
+  isUnlisting: boolean;
   onEditUnit: (unit: UnitWithListing) => void;
+  onUnlistUnit: (unit: UnitWithListing) => Promise<void> | void;
   unit: UnitWithListing;
 }) {
   const listing = unit.listing ?? defaultListing(unit.id);
+  const isAvailable = listing.status === "available";
 
   return (
     <div
@@ -1627,27 +1646,16 @@ function BuildingUnitListRow({
       </div>
       <div className="row-actions building-unit-actions">
         <button
-          className="mini-action"
+          className="mini-action danger-ghost-button"
+          disabled={!canEdit || !isAvailable || isUnlisting}
           onClick={(event) => {
             event.stopPropagation();
-            onEditUnit(unit);
+            onUnlistUnit(unit);
           }}
           type="button"
         >
-          <Pencil size={13} />
-          Edit
-        </button>
-        <button
-          className="icon-button danger"
-          disabled={!canEdit || isDeleting}
-          onClick={(event) => {
-            event.stopPropagation();
-            onDeleteUnit(unit);
-          }}
-          title="Delete unit"
-          type="button"
-        >
-          <Trash2 size={14} />
+          <EyeOff size={13} />
+          {isAvailable ? "Unlist" : "Unlisted"}
         </button>
       </div>
     </div>

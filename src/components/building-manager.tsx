@@ -64,6 +64,7 @@ type BuildingMetric = {
 };
 type UnitStatusFilter = "all" | ListingStatus;
 type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
+type BuildingUnitListFilter = "all" | "listed" | "unlisted";
 
 const listingStatuses: ListingStatus[] = ["available", "pending", "unavailable", "rented", "archived"];
 const buildingImageKinds: BuildingImageKind[] = [
@@ -133,7 +134,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [isBuildingEditorOpen, setIsBuildingEditorOpen] = useState(false);
   const [unitListBuilding, setUnitListBuilding] = useState<Building | null>(null);
   const [unitDialogDraft, setUnitDialogDraft] = useState<UnitWithListing | null>(null);
-  const [unlistingUnitID, setUnlistingUnitID] = useState<string | null>(null);
+  const [publishingUnitID, setPublishingUnitID] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
@@ -709,26 +710,25 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setUnitListBuilding(building);
   }
 
-  async function unlistUnitFromList(unit: UnitWithListing) {
+  async function publishUnitFromList(unit: UnitWithListing) {
     if (!canEdit || unit.id.startsWith("new-")) {
       return;
     }
 
-    const confirmed = window.confirm(`Unlist unit ${unit.unit_number || unit.name || "this unit"}?`);
+    const listing = unitListListing(unit);
 
-    if (!confirmed) {
+    if (isListedUnit(unit)) {
       return;
     }
 
-    setUnlistingUnitID(unit.id);
+    setPublishingUnitID(unit.id);
     setError(null);
     setMessage(null);
 
     const now = new Date().toISOString();
-    const listing = unit.listing ?? defaultListing(unit.id);
     const listingPayload = {
       unit_id: unit.id,
-      status: "unavailable" as ListingStatus,
+      status: "available" as ListingStatus,
       market_price_cents: listing.market_price_cents,
       lease_months: listing.lease_months,
       net_price_cents: listing.net_price_cents,
@@ -737,22 +737,23 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       final_price_cents: listing.final_price_cents,
       available_from: listing.available_from,
       source: listing.source || "admin",
+      listed_at: listing.listed_at || now,
       last_seen_at: now,
-      unavailable_at: now
+      unavailable_at: null
     };
 
     const result = listing.id
       ? await supabase.from("unit_listings").update(listingPayload).eq("id", listing.id)
       : await supabase.from("unit_listings").insert(listingPayload);
 
-    setUnlistingUnitID(null);
+    setPublishingUnitID(null);
 
     if (result.error) {
       setError(result.error.message);
       return;
     }
 
-    setMessage("Unit unlisted.");
+    setMessage("Unit published.");
     await loadUnits();
     await loadBuildings();
   }
@@ -1081,8 +1082,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           onAddUnit={openAddUnitDialog}
           onClose={() => setUnitListBuilding(null)}
           onEditUnit={openEditUnitDialog}
-          onUnlistUnit={unlistUnitFromList}
-          unlistingUnitID={unlistingUnitID}
+          onPublishUnit={publishUnitFromList}
+          publishingUnitID={publishingUnitID}
           units={unitListUnits}
         />
       ) : null}
@@ -1520,8 +1521,8 @@ function BuildingUnitListDialog({
   onAddUnit,
   onClose,
   onEditUnit,
-  onUnlistUnit,
-  unlistingUnitID,
+  onPublishUnit,
+  publishingUnitID,
   units
 }: {
   building: Building;
@@ -1529,11 +1530,15 @@ function BuildingUnitListDialog({
   onAddUnit: (building: Building) => void;
   onClose: () => void;
   onEditUnit: (unit: UnitWithListing) => void;
-  onUnlistUnit: (unit: UnitWithListing) => Promise<void> | void;
-  unlistingUnitID: string | null;
+  onPublishUnit: (unit: UnitWithListing) => Promise<void> | void;
+  publishingUnitID: string | null;
   units: UnitWithListing[];
 }) {
-  const availableCount = units.filter((unit) => (unit.listing ?? defaultListing(unit.id)).status === "available").length;
+  const [listFilter, setListFilter] = useState<BuildingUnitListFilter>("listed");
+  const listedUnits = units.filter(isListedUnit);
+  const unlistedUnits = units.filter((unit) => !isListedUnit(unit));
+  const visibleUnits =
+    listFilter === "all" ? units : listFilter === "listed" ? listedUnits : unlistedUnits;
 
   return (
     <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
@@ -1548,7 +1553,7 @@ function BuildingUnitListDialog({
             <div className="eyebrow">Unit list</div>
             <h3>{building.name}</h3>
             <p className="drawer-header-subtitle">
-              {availableCount} available / {units.length} total
+              {listedUnits.length} listed / {unlistedUnits.length} unlisted / {units.length} total
             </p>
           </div>
           <div className="drawer-header-actions">
@@ -1566,25 +1571,51 @@ function BuildingUnitListDialog({
           {units.length === 0 ? (
             <EmptyState title="No units yet" body="Add the first unit for this building." />
           ) : (
-            <div className="building-unit-list">
-              <div className="building-unit-list-head">
-                <span>Unit</span>
-                <span>Layout</span>
-                <span>Price</span>
-                <span>Status</span>
-                <span>Actions</span>
+            <>
+              <div className="building-unit-filter">
+                <span>Show</span>
+                <div className="building-unit-filter-tabs">
+                  {(["listed", "unlisted", "all"] as BuildingUnitListFilter[]).map((filter) => (
+                    <button
+                      className={listFilter === filter ? "active" : ""}
+                      key={filter}
+                      onClick={() => setListFilter(filter)}
+                      type="button"
+                    >
+                      {buildingUnitFilterLabel(filter)}
+                    </button>
+                  ))}
+                </div>
+                <strong>{visibleUnits.length} shown</strong>
               </div>
-              {units.map((unit) => (
-                <BuildingUnitListRow
-                  canEdit={canEdit}
-                  isUnlisting={unlistingUnitID === unit.id}
-                  key={unit.id}
-                  onEditUnit={onEditUnit}
-                  onUnlistUnit={onUnlistUnit}
-                  unit={unit}
+
+              {visibleUnits.length === 0 ? (
+                <EmptyState
+                  title={`No ${buildingUnitFilterLabel(listFilter).toLowerCase()} units`}
+                  body="Change the filter or add a new unit."
                 />
-              ))}
-            </div>
+              ) : (
+                <div className="building-unit-list">
+                  <div className="building-unit-list-head">
+                    <span>Unit</span>
+                    <span>Layout</span>
+                    <span>Price</span>
+                    <span>Status</span>
+                    <span>Actions</span>
+                  </div>
+                  {visibleUnits.map((unit) => (
+                    <BuildingUnitListRow
+                      canEdit={canEdit}
+                      isPublishing={publishingUnitID === unit.id}
+                      key={unit.id}
+                      onEditUnit={onEditUnit}
+                      onPublishUnit={onPublishUnit}
+                      unit={unit}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </aside>
@@ -1594,19 +1625,19 @@ function BuildingUnitListDialog({
 
 function BuildingUnitListRow({
   canEdit,
-  isUnlisting,
+  isPublishing,
   onEditUnit,
-  onUnlistUnit,
+  onPublishUnit,
   unit
 }: {
   canEdit: boolean;
-  isUnlisting: boolean;
+  isPublishing: boolean;
   onEditUnit: (unit: UnitWithListing) => void;
-  onUnlistUnit: (unit: UnitWithListing) => Promise<void> | void;
+  onPublishUnit: (unit: UnitWithListing) => Promise<void> | void;
   unit: UnitWithListing;
 }) {
-  const listing = unit.listing ?? defaultListing(unit.id);
-  const isAvailable = listing.status === "available";
+  const listing = unitListListing(unit);
+  const isListed = isListedUnit(unit);
 
   return (
     <div
@@ -1646,16 +1677,16 @@ function BuildingUnitListRow({
       </div>
       <div className="row-actions building-unit-actions">
         <button
-          className="mini-action danger-ghost-button"
-          disabled={!canEdit || !isAvailable || isUnlisting}
+          className="mini-action"
+          disabled={!canEdit || isListed || isPublishing}
           onClick={(event) => {
             event.stopPropagation();
-            onUnlistUnit(unit);
+            onPublishUnit(unit);
           }}
           type="button"
         >
-          <EyeOff size={13} />
-          {isAvailable ? "Unlist" : "Unlisted"}
+          <UploadCloud size={13} />
+          {isListed ? "Published" : isPublishing ? "Publishing" : "Publish"}
         </button>
       </div>
     </div>
@@ -2583,6 +2614,22 @@ function leaseDealLabel(leaseMonths: number, freeMonths: number) {
 
 function unitLayoutLabel(unit: UnitWithListing) {
   return `${unit.bedroom_count} bd / ${unit.bathroom_count} ba`;
+}
+
+function isListedUnit(unit: UnitWithListing) {
+  return unit.listing?.status === "available";
+}
+
+function unitListListing(unit: UnitWithListing) {
+  return unit.listing ?? { ...defaultListing(unit.id), status: "unavailable" as ListingStatus };
+}
+
+function buildingUnitFilterLabel(filter: BuildingUnitListFilter) {
+  if (filter === "all") {
+    return "All";
+  }
+
+  return filter === "listed" ? "Listed" : "Unlisted";
 }
 
 function calculateNetPriceCents(marketPriceCents: number | null, leaseMonths: number, freeMonths: number) {

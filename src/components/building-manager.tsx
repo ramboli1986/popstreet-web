@@ -1441,12 +1441,6 @@ function BuildingEditor({
           value={draft.score}
           onChange={(value) => updateDraft("score", value)}
         />
-        <InputField
-          disabled={!canEdit}
-          label="Cover image URL"
-          value={draft.cover_image_url ?? ""}
-          onChange={(value) => updateDraft("cover_image_url", value || null)}
-        />
       </div>
 
       <div className="form-section-title">Building details</div>
@@ -1530,11 +1524,13 @@ function BuildingEditor({
 
       <ImageCollectionEditor
         canEdit={canEdit}
+        coverImageURL={draft.cover_image_url ?? ""}
         createImage={() => createBuildingImageDraft(draft.id, images.length)}
         helpText="Building images are mixed into the detail gallery after unit photos. Use specific types for exterior, lobby, amenity, and neighborhood shots."
         images={images}
         kinds={buildingImageKinds}
         onChange={onImagesChange}
+        onCoverImageURLChange={(value) => updateDraft("cover_image_url", value || null)}
         title="Building media"
       />
 
@@ -2497,19 +2493,23 @@ type ImageRowBase = {
 
 function ImageCollectionEditor<TImage extends ImageRowBase>({
   canEdit,
+  coverImageURL,
   createImage,
   helpText,
   images,
   kinds,
   onChange,
+  onCoverImageURLChange,
   title
 }: {
   canEdit: boolean;
+  coverImageURL?: string;
   createImage: () => TImage;
   helpText: string;
   images: TImage[];
   kinds: readonly string[];
   onChange: (images: TImage[]) => void;
+  onCoverImageURLChange?: (value: string) => void;
   title: string;
 }) {
   const sortedImages = useMemo(() => images.slice().sort(compareMediaImageRows), [images]);
@@ -2557,6 +2557,15 @@ function ImageCollectionEditor<TImage extends ImageRowBase>({
           Add image
         </button>
       </div>
+
+      {onCoverImageURLChange ? (
+        <InputField
+          disabled={!canEdit}
+          label="Cover image URL"
+          value={coverImageURL ?? ""}
+          onChange={onCoverImageURLChange}
+        />
+      ) : null}
 
       {sortedImages.length === 0 ? (
         <div className="media-empty">No images yet.</div>

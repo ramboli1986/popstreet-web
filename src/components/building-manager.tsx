@@ -132,6 +132,7 @@ const buildingServiceOptions = [
   { title: "DOORMAN", label: "Doorman", systemImageName: "door.left.hand.open" },
   { title: "STAFF", label: "Staff", systemImageName: "person.2" },
   { title: "GYM", label: "Gym", systemImageName: "dumbbell" },
+  { title: "POOL", label: "Pool", systemImageName: "water.waves" },
   { title: "ROOFTOP", label: "Rooftop", systemImageName: "building.2" },
   { title: "PETS", label: "Pets", systemImageName: "pawprint" },
   { title: "BIKES", label: "Bikes", systemImageName: "bicycle" }

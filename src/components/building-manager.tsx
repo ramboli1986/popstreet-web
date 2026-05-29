@@ -84,8 +84,7 @@ const buildingImageKinds: BuildingImageKind[] = [
   "pool",
   "common_area",
   "neighborhood",
-  "cover",
-  "story_video"
+  "cover"
 ];
 const unitImageKinds: UnitImageKind[] = [
   "photo",
@@ -659,7 +658,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       summary: "",
       description_labels: [],
       cover_image_url: null,
-      story_video_url: null,
       is_active: true,
       year_built: null,
       total_floors: null,
@@ -1443,6 +1441,12 @@ function BuildingEditor({
           value={draft.score}
           onChange={(value) => updateDraft("score", value)}
         />
+        <InputField
+          disabled={!canEdit}
+          label="Cover image URL"
+          value={draft.cover_image_url ?? ""}
+          onChange={(value) => updateDraft("cover_image_url", value || null)}
+        />
       </div>
 
       <div className="form-section-title">Building details</div>
@@ -1499,18 +1503,6 @@ function BuildingEditor({
           label="Description labels"
           value={stringArrayToInput(draft.description_labels)}
           onChange={(value) => updateDraft("description_labels", toStringArray(value))}
-        />
-        <InputField
-          disabled={!canEdit}
-          label="Cover image URL"
-          value={draft.cover_image_url ?? ""}
-          onChange={(value) => updateDraft("cover_image_url", value || null)}
-        />
-        <InputField
-          disabled={!canEdit}
-          label="Story video URL"
-          value={draft.story_video_url ?? ""}
-          onChange={(value) => updateDraft("story_video_url", value || null)}
         />
         <label className="field full">
           <span>AI summary</span>
@@ -3042,7 +3034,6 @@ function buildingPayload(building: Building) {
     summary: building.summary,
     description_labels: building.description_labels,
     cover_image_url: building.cover_image_url,
-    story_video_url: building.story_video_url,
     is_active: building.is_active,
     year_built: building.year_built,
     total_floors: building.total_floors,

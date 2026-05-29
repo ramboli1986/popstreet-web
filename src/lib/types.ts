@@ -61,7 +61,6 @@ export type Building = {
   summary: string | null;
   description_labels: string[];
   cover_image_url: string | null;
-  story_video_url: string | null;
   is_active: boolean;
   year_built: number | null;
   total_floors: number | null;
@@ -87,7 +86,6 @@ export type Building = {
 export type BuildingImageKind =
   | "cover"
   | "gallery"
-  | "story_video"
   | "exterior"
   | "lobby"
   | "amenity"

@@ -1505,6 +1505,12 @@ strong {
   white-space: nowrap;
 }
 
+.mini-action.danger-ghost-button {
+  border-color: #ffd7d7;
+  background: var(--red-soft);
+  color: var(--red);
+}
+
 .inspector-panel {
   display: flex;
   min-height: 0;

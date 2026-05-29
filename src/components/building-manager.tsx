@@ -134,7 +134,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [isBuildingEditorOpen, setIsBuildingEditorOpen] = useState(false);
   const [unitListBuilding, setUnitListBuilding] = useState<Building | null>(null);
   const [unitDialogDraft, setUnitDialogDraft] = useState<UnitWithListing | null>(null);
-  const [publishingUnitID, setPublishingUnitID] = useState<string | null>(null);
+  const [publicationUnitID, setPublicationUnitID] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
@@ -710,25 +710,26 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setUnitListBuilding(building);
   }
 
-  async function publishUnitFromList(unit: UnitWithListing) {
+  async function updateUnitPublicationFromList(unit: UnitWithListing, nextStatus: Extract<ListingStatus, "available" | "unavailable">) {
     if (!canEdit || unit.id.startsWith("new-")) {
       return;
     }
 
     const listing = unitListListing(unit);
+    const isListed = isListedUnit(unit);
 
-    if (isListedUnit(unit)) {
+    if ((isListed && nextStatus === "available") || (!isListed && nextStatus === "unavailable")) {
       return;
     }
 
-    setPublishingUnitID(unit.id);
+    setPublicationUnitID(unit.id);
     setError(null);
     setMessage(null);
 
     const now = new Date().toISOString();
     const listingPayload = {
       unit_id: unit.id,
-      status: "available" as ListingStatus,
+      status: nextStatus,
       market_price_cents: listing.market_price_cents,
       lease_months: listing.lease_months,
       net_price_cents: listing.net_price_cents,
@@ -737,23 +738,23 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       final_price_cents: listing.final_price_cents,
       available_from: listing.available_from,
       source: listing.source || "admin",
-      listed_at: listing.listed_at || now,
+      listed_at: nextStatus === "available" ? listing.listed_at || now : listing.listed_at,
       last_seen_at: now,
-      unavailable_at: null
+      unavailable_at: nextStatus === "available" ? null : now
     };
 
     const result = listing.id
       ? await supabase.from("unit_listings").update(listingPayload).eq("id", listing.id)
       : await supabase.from("unit_listings").insert(listingPayload);
 
-    setPublishingUnitID(null);
+    setPublicationUnitID(null);
 
     if (result.error) {
       setError(result.error.message);
       return;
     }
 
-    setMessage("Unit published.");
+    setMessage(nextStatus === "available" ? "Unit published." : "Unit unlisted.");
     await loadUnits();
     await loadBuildings();
   }
@@ -1082,8 +1083,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           onAddUnit={openAddUnitDialog}
           onClose={() => setUnitListBuilding(null)}
           onEditUnit={openEditUnitDialog}
-          onPublishUnit={publishUnitFromList}
-          publishingUnitID={publishingUnitID}
+          onUpdateUnitPublication={updateUnitPublicationFromList}
+          publicationUnitID={publicationUnitID}
           units={unitListUnits}
         />
       ) : null}
@@ -1521,8 +1522,8 @@ function BuildingUnitListDialog({
   onAddUnit,
   onClose,
   onEditUnit,
-  onPublishUnit,
-  publishingUnitID,
+  onUpdateUnitPublication,
+  publicationUnitID,
   units
 }: {
   building: Building;
@@ -1530,8 +1531,11 @@ function BuildingUnitListDialog({
   onAddUnit: (building: Building) => void;
   onClose: () => void;
   onEditUnit: (unit: UnitWithListing) => void;
-  onPublishUnit: (unit: UnitWithListing) => Promise<void> | void;
-  publishingUnitID: string | null;
+  onUpdateUnitPublication: (
+    unit: UnitWithListing,
+    nextStatus: Extract<ListingStatus, "available" | "unavailable">
+  ) => Promise<void> | void;
+  publicationUnitID: string | null;
   units: UnitWithListing[];
 }) {
   const [listFilter, setListFilter] = useState<BuildingUnitListFilter>("listed");
@@ -1606,10 +1610,10 @@ function BuildingUnitListDialog({
                   {visibleUnits.map((unit) => (
                     <BuildingUnitListRow
                       canEdit={canEdit}
-                      isPublishing={publishingUnitID === unit.id}
+                      isUpdatingPublication={publicationUnitID === unit.id}
                       key={unit.id}
                       onEditUnit={onEditUnit}
-                      onPublishUnit={onPublishUnit}
+                      onUpdateUnitPublication={onUpdateUnitPublication}
                       unit={unit}
                     />
                   ))}
@@ -1625,19 +1629,23 @@ function BuildingUnitListDialog({
 
 function BuildingUnitListRow({
   canEdit,
-  isPublishing,
+  isUpdatingPublication,
   onEditUnit,
-  onPublishUnit,
+  onUpdateUnitPublication,
   unit
 }: {
   canEdit: boolean;
-  isPublishing: boolean;
+  isUpdatingPublication: boolean;
   onEditUnit: (unit: UnitWithListing) => void;
-  onPublishUnit: (unit: UnitWithListing) => Promise<void> | void;
+  onUpdateUnitPublication: (
+    unit: UnitWithListing,
+    nextStatus: Extract<ListingStatus, "available" | "unavailable">
+  ) => Promise<void> | void;
   unit: UnitWithListing;
 }) {
   const listing = unitListListing(unit);
   const isListed = isListedUnit(unit);
+  const nextStatus = isListed ? "unavailable" : "available";
 
   return (
     <div
@@ -1677,16 +1685,16 @@ function BuildingUnitListRow({
       </div>
       <div className="row-actions building-unit-actions">
         <button
-          className="mini-action"
-          disabled={!canEdit || isListed || isPublishing}
+          className={`mini-action ${isListed ? "danger-ghost-button" : ""}`}
+          disabled={!canEdit || isUpdatingPublication}
           onClick={(event) => {
             event.stopPropagation();
-            onPublishUnit(unit);
+            onUpdateUnitPublication(unit, nextStatus);
           }}
           type="button"
         >
-          <UploadCloud size={13} />
-          {isListed ? "Published" : isPublishing ? "Publishing" : "Publish"}
+          {isListed ? <EyeOff size={13} /> : <UploadCloud size={13} />}
+          {isUpdatingPublication ? "Saving" : isListed ? "Unlist" : "Publish"}
         </button>
       </div>
     </div>

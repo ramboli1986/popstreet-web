@@ -107,6 +107,26 @@ export type BuildingImage = {
   created_at: string;
 };
 
+export type BuildingService = {
+  id: string;
+  building_id: string;
+  title: string;
+  system_image_name: string | null;
+  sort_order: number;
+  created_at: string;
+};
+
+export type BuildingTransitLine = {
+  id: string;
+  building_id: string;
+  line_name: string;
+  station_name: string | null;
+  walk_minutes: number | null;
+  distance_miles: number | null;
+  sort_order: number;
+  created_at: string;
+};
+
 export type TourRequestStatus =
   | "submitted"
   | "link_provided"

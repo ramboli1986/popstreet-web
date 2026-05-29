@@ -1842,6 +1842,75 @@ strong {
   margin-top: 4px;
 }
 
+.choice-editor {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+  margin: 4px 0 14px;
+}
+
+.choice-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.choice-editor-head .form-section-title {
+  margin: 0;
+}
+
+.choice-editor-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.choice-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.transit-choice-grid {
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+}
+
+.service-choice-grid {
+  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+}
+
+.check-option {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #fbfcfe;
+  color: #374151;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 10px;
+}
+
+.check-option input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--brand);
+}
+
+.check-option:has(input:checked) {
+  border-color: color-mix(in srgb, var(--brand) 38%, var(--line-soft));
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+}
+
+.choice-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
 .media-editor-head {
   display: flex;
   align-items: flex-start;
@@ -2291,6 +2360,7 @@ strong {
   .form-grid.three,
   .media-row,
   .media-row-fields,
+  .choice-add-row,
   .building-unit-list-head,
   .building-unit-row,
   .account-row,

@@ -40,6 +40,8 @@ import type {
   Building,
   BuildingImage,
   BuildingImageKind,
+  BuildingService,
+  BuildingTransitLine,
   ListingStatus,
   ManagementCompany,
   Neighborhood,
@@ -65,6 +67,11 @@ type BuildingMetric = {
 type UnitStatusFilter = "all" | ListingStatus;
 type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 type BuildingUnitListFilter = "all" | "listed" | "unlisted";
+type BuildingServiceOption = {
+  title: string;
+  label: string;
+  systemImageName: string;
+};
 
 const listingStatuses: ListingStatus[] = ["available", "pending", "unavailable", "rented", "archived"];
 const buildingImageKinds: BuildingImageKind[] = [
@@ -90,6 +97,44 @@ const unitImageKinds: UnitImageKind[] = [
   "balcony",
   "view",
   "floor_plan"
+];
+const transitLineOptions = [
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "A",
+  "C",
+  "E",
+  "B",
+  "D",
+  "F",
+  "M",
+  "G",
+  "J",
+  "Z",
+  "L",
+  "N",
+  "Q",
+  "R",
+  "W",
+  "S",
+  "PATH",
+  "HBLR",
+  "LIRR",
+  "Light Rail"
+];
+const buildingServiceOptions = [
+  { title: "AMENITIES", label: "Amenities", systemImageName: "building.columns" },
+  { title: "DOORMAN", label: "Doorman", systemImageName: "door.left.hand.open" },
+  { title: "STAFF", label: "Staff", systemImageName: "person.2" },
+  { title: "GYM", label: "Gym", systemImageName: "dumbbell" },
+  { title: "ROOFTOP", label: "Rooftop", systemImageName: "building.2" },
+  { title: "PETS", label: "Pets", systemImageName: "pawprint" },
+  { title: "BIKES", label: "Bikes", systemImageName: "bicycle" }
 ];
 const leaseMonthOptions = Array.from({ length: 15 }, (_item, index) => index + 10);
 const freeMonthOptions = Array.from({ length: 13 }, (_item, index) => index * 0.5);
@@ -123,6 +168,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const locale = language === "zh" ? "zh-CN" : "en-US";
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [buildingImages, setBuildingImages] = useState<BuildingImage[]>([]);
+  const [buildingServices, setBuildingServices] = useState<BuildingService[]>([]);
+  const [buildingTransitLines, setBuildingTransitLines] = useState<BuildingTransitLine[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [managementCompanies, setManagementCompanies] = useState<ManagementCompany[]>([]);
   const [unitIndex, setUnitIndex] = useState<UnitIndex[]>([]);
@@ -157,7 +204,16 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setIsLoading(true);
     setError(null);
 
-    const [buildingResult, neighborhoodResult, companyResult, unitResult, listingResult, buildingImageResult] = await Promise.all([
+    const [
+      buildingResult,
+      neighborhoodResult,
+      companyResult,
+      unitResult,
+      listingResult,
+      buildingImageResult,
+      buildingServiceResult,
+      buildingTransitResult
+    ] = await Promise.all([
       supabase
         .from("buildings")
         .select("*, neighborhoods(name, slug), management_companies(id, slug, name, website)")
@@ -167,7 +223,9 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       supabase.from("management_companies").select("*").order("name"),
       supabase.from("units").select("id, building_id").limit(5000),
       supabase.from("unit_listings").select("*").order("updated_at", { ascending: false }).limit(5000),
-      supabase.from("building_images").select("*").order("sort_order").limit(10000)
+      supabase.from("building_images").select("*").order("sort_order").limit(10000),
+      supabase.from("building_services").select("*").order("sort_order").limit(10000),
+      supabase.from("building_transit_lines").select("*").order("sort_order").limit(10000)
     ]);
 
     setIsLoading(false);
@@ -178,7 +236,9 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       companyResult.error ||
       unitResult.error ||
       listingResult.error ||
-      buildingImageResult.error
+      buildingImageResult.error ||
+      buildingServiceResult.error ||
+      buildingTransitResult.error
     ) {
       setError(
         buildingResult.error?.message ??
@@ -187,6 +247,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           unitResult.error?.message ??
           listingResult.error?.message ??
           buildingImageResult.error?.message ??
+          buildingServiceResult.error?.message ??
+          buildingTransitResult.error?.message ??
           "Could not load inventory."
       );
       return;
@@ -204,6 +266,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setUnitIndex((unitResult.data ?? []) as UnitIndex[]);
     setListingIndex((listingResult.data ?? []) as UnitListing[]);
     setBuildingImages((buildingImageResult.data ?? []) as BuildingImage[]);
+    setBuildingServices((buildingServiceResult.data ?? []) as BuildingService[]);
+    setBuildingTransitLines((buildingTransitResult.data ?? []) as BuildingTransitLine[]);
     setSelectedBuilding(nextSelected);
     setDraft(nextSelected ? { ...nextSelected } : null);
   }, [selectedBuilding]);
@@ -488,6 +552,20 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         : [],
     [buildingImages, draft]
   );
+  const buildingServicesForDraft = useMemo(
+    () =>
+      draft
+        ? buildingServices.filter((service) => service.building_id === draft.id).sort(compareSortableRows)
+        : [],
+    [buildingServices, draft]
+  );
+  const buildingTransitLinesForDraft = useMemo(
+    () =>
+      draft
+        ? buildingTransitLines.filter((line) => line.building_id === draft.id).sort(compareSortableRows)
+        : [],
+    [buildingTransitLines, draft]
+  );
 
   const unitImagesForDialog = useMemo(
     () =>
@@ -521,6 +599,28 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setBuildingImages((current) => [
       ...current.filter((image) => image.building_id !== draft.id),
       ...nextImages
+    ]);
+  }
+
+  function updateBuildingServiceDrafts(nextServices: BuildingService[]) {
+    if (!draft) {
+      return;
+    }
+
+    setBuildingServices((current) => [
+      ...current.filter((service) => service.building_id !== draft.id),
+      ...nextServices
+    ]);
+  }
+
+  function updateBuildingTransitLineDrafts(nextLines: BuildingTransitLine[]) {
+    if (!draft) {
+      return;
+    }
+
+    setBuildingTransitLines((current) => [
+      ...current.filter((line) => line.building_id !== draft.id),
+      ...nextLines
     ]);
   }
 
@@ -618,13 +718,19 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
     const savedBuilding = result.data as Building;
     const imagesForDraft = buildingImages.filter((image) => image.building_id === draft.id);
+    const servicesForDraft = buildingServices.filter((service) => service.building_id === draft.id);
+    const transitLinesForDraft = buildingTransitLines.filter((line) => line.building_id === draft.id);
     let syncedImages: BuildingImage[] = [];
+    let syncedServices: BuildingService[] = [];
+    let syncedTransitLines: BuildingTransitLine[] = [];
 
     try {
       syncedImages = await syncBuildingImages(savedBuilding.id, imagesForDraft);
+      syncedServices = await syncBuildingServices(savedBuilding.id, servicesForDraft);
+      syncedTransitLines = await syncBuildingTransitLines(savedBuilding.id, transitLinesForDraft);
     } catch (syncError) {
       setIsSaving(false);
-      setError(syncError instanceof Error ? syncError.message : "Building saved, but images could not be saved.");
+      setError(syncError instanceof Error ? syncError.message : "Building saved, but related fields could not be saved.");
       return;
     }
 
@@ -637,6 +743,14 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setBuildingImages((current) => [
       ...current.filter((image) => image.building_id !== draft.id && image.building_id !== savedBuilding.id),
       ...syncedImages
+    ]);
+    setBuildingServices((current) => [
+      ...current.filter((service) => service.building_id !== draft.id && service.building_id !== savedBuilding.id),
+      ...syncedServices
+    ]);
+    setBuildingTransitLines((current) => [
+      ...current.filter((line) => line.building_id !== draft.id && line.building_id !== savedBuilding.id),
+      ...syncedTransitLines
     ]);
     setSelectedBuilding(savedBuilding);
     setDraft({ ...savedBuilding });
@@ -674,6 +788,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
     setBuildings(remaining);
     setBuildingImages((current) => current.filter((image) => image.building_id !== building.id));
+    setBuildingServices((current) => current.filter((service) => service.building_id !== building.id));
+    setBuildingTransitLines((current) => current.filter((line) => line.building_id !== building.id));
     setSelectedBuilding(nextSelected);
     setDraft(nextSelected ? { ...nextSelected } : null);
     setUnitListBuilding((current) => (current?.id === building.id ? null : current));
@@ -893,9 +1009,13 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             isSaving={isSaving}
             managementCompanies={managementCompanies}
             neighborhoods={neighborhoods}
+            services={buildingServicesForDraft}
+            transitLines={buildingTransitLinesForDraft}
             onClose={() => setIsBuildingEditorOpen(false)}
             onImagesChange={updateBuildingImageDrafts}
             onSave={saveBuilding}
+            onServicesChange={updateBuildingServiceDrafts}
+            onTransitLinesChange={updateBuildingTransitLineDrafts}
             updateDraft={updateDraft}
           />
         ) : null}
@@ -1069,9 +1189,13 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           isSaving={isSaving}
           managementCompanies={managementCompanies}
           neighborhoods={neighborhoods}
+          services={buildingServicesForDraft}
+          transitLines={buildingTransitLinesForDraft}
           onClose={() => setIsBuildingEditorOpen(false)}
           onImagesChange={updateBuildingImageDrafts}
           onSave={saveBuilding}
+          onServicesChange={updateBuildingServiceDrafts}
+          onTransitLinesChange={updateBuildingTransitLineDrafts}
           updateDraft={updateDraft}
         />
       ) : null}
@@ -1245,7 +1369,11 @@ function BuildingEditor({
   images,
   managementCompanies,
   neighborhoods,
+  services,
+  transitLines,
   onImagesChange,
+  onServicesChange,
+  onTransitLinesChange,
   updateDraft
 }: {
   canEdit: boolean;
@@ -1253,7 +1381,11 @@ function BuildingEditor({
   images: BuildingImage[];
   managementCompanies: ManagementCompany[];
   neighborhoods: Neighborhood[];
+  services: BuildingService[];
+  transitLines: BuildingTransitLine[];
   onImagesChange: (images: BuildingImage[]) => void;
+  onServicesChange: (services: BuildingService[]) => void;
+  onTransitLinesChange: (lines: BuildingTransitLine[]) => void;
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
 }) {
   return (
@@ -1389,6 +1521,20 @@ function BuildingEditor({
         </label>
       </div>
 
+      <BuildingTransitLineSelector
+        buildingID={draft.id}
+        canEdit={canEdit}
+        lines={transitLines}
+        onChange={onTransitLinesChange}
+      />
+
+      <BuildingServiceSelector
+        buildingID={draft.id}
+        canEdit={canEdit}
+        onChange={onServicesChange}
+        services={services}
+      />
+
       <ImageCollectionEditor
         canEdit={canEdit}
         createImage={() => createBuildingImageDraft(draft.id, images.length)}
@@ -1403,6 +1549,178 @@ function BuildingEditor({
   );
 }
 
+function BuildingTransitLineSelector({
+  buildingID,
+  canEdit,
+  lines,
+  onChange
+}: {
+  buildingID: string;
+  canEdit: boolean;
+  lines: BuildingTransitLine[];
+  onChange: (lines: BuildingTransitLine[]) => void;
+}) {
+  const [customLine, setCustomLine] = useState("");
+  const activeLines = useMemo(
+    () => new Set(lines.map((line) => normalizeChoiceValue(line.line_name))),
+    [lines]
+  );
+  const options = useMemo(() => {
+    const knownOptions = new Set(transitLineOptions.map(normalizeChoiceValue));
+    const customOptions = lines
+      .map((line) => line.line_name.trim())
+      .filter((line) => line.length > 0 && !knownOptions.has(normalizeChoiceValue(line)));
+
+    return [...transitLineOptions, ...customOptions];
+  }, [lines]);
+
+  function toggleLine(lineName: string, checked: boolean) {
+    const normalizedLine = normalizeChoiceValue(lineName);
+
+    if (checked) {
+      if (activeLines.has(normalizedLine)) {
+        return;
+      }
+
+      onChange(normalizeBuildingTransitLines([...lines, createBuildingTransitLineDraft(buildingID, lineName, lines.length)]));
+      return;
+    }
+
+    onChange(normalizeBuildingTransitLines(lines.filter((line) => normalizeChoiceValue(line.line_name) !== normalizedLine)));
+  }
+
+  function addCustomLine() {
+    const nextLine = customLine.trim();
+
+    if (!nextLine || activeLines.has(normalizeChoiceValue(nextLine))) {
+      setCustomLine("");
+      return;
+    }
+
+    onChange(normalizeBuildingTransitLines([...lines, createBuildingTransitLineDraft(buildingID, nextLine, lines.length)]));
+    setCustomLine("");
+  }
+
+  return (
+    <section className="choice-editor">
+      <div className="choice-editor-head">
+        <div className="form-section-title">Transit / subway lines</div>
+        <span>{lines.length} selected</span>
+      </div>
+      <div className="choice-grid transit-choice-grid">
+        {options.map((lineName) => {
+          const normalizedLine = normalizeChoiceValue(lineName);
+
+          return (
+            <label className="check-option" key={normalizedLine}>
+              <input
+                checked={activeLines.has(normalizedLine)}
+                disabled={!canEdit}
+                type="checkbox"
+                onChange={(event) => toggleLine(lineName, event.target.checked)}
+              />
+              <span>{lineName}</span>
+            </label>
+          );
+        })}
+      </div>
+      <div className="choice-add-row">
+        <input
+          disabled={!canEdit}
+          placeholder="Custom line"
+          value={customLine}
+          onChange={(event) => setCustomLine(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              addCustomLine();
+            }
+          }}
+        />
+        <button className="ghost-button compact-button" disabled={!canEdit || !customLine.trim()} onClick={addCustomLine} type="button">
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function BuildingServiceSelector({
+  buildingID,
+  canEdit,
+  services,
+  onChange
+}: {
+  buildingID: string;
+  canEdit: boolean;
+  services: BuildingService[];
+  onChange: (services: BuildingService[]) => void;
+}) {
+  const activeServices = useMemo(
+    () => new Set(services.map((service) => normalizeChoiceValue(service.title))),
+    [services]
+  );
+  const options = useMemo(() => {
+    const predefined = new Map(buildingServiceOptions.map((option) => [normalizeChoiceValue(option.title), option]));
+
+    services.forEach((service) => {
+      const normalizedTitle = normalizeChoiceValue(service.title);
+
+      if (!predefined.has(normalizedTitle)) {
+        predefined.set(normalizedTitle, {
+          title: service.title.trim(),
+          label: serviceOptionLabel(service.title),
+          systemImageName: service.system_image_name ?? "sparkles"
+        });
+      }
+    });
+
+    return Array.from(predefined.values()).sort(compareBuildingServiceOptions);
+  }, [services]);
+
+  function toggleService(option: BuildingServiceOption, checked: boolean) {
+    const normalizedTitle = normalizeChoiceValue(option.title);
+
+    if (checked) {
+      if (activeServices.has(normalizedTitle)) {
+        return;
+      }
+
+      onChange(normalizeBuildingServices([...services, createBuildingServiceDraft(buildingID, option, services.length)]));
+      return;
+    }
+
+    onChange(normalizeBuildingServices(services.filter((service) => normalizeChoiceValue(service.title) !== normalizedTitle)));
+  }
+
+  return (
+    <section className="choice-editor">
+      <div className="choice-editor-head">
+        <div className="form-section-title">Building services</div>
+        <span>{services.length} selected</span>
+      </div>
+      <div className="choice-grid service-choice-grid">
+        {options.map((option) => {
+          const normalizedTitle = normalizeChoiceValue(option.title);
+
+          return (
+            <label className="check-option service-check-option" key={normalizedTitle}>
+              <input
+                checked={activeServices.has(normalizedTitle)}
+                disabled={!canEdit}
+                type="checkbox"
+                onChange={(event) => toggleService(option, event.target.checked)}
+              />
+              <span>{option.label}</span>
+            </label>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function BuildingEditorDialog({
   buildingImages,
   canEdit,
@@ -1410,7 +1728,11 @@ function BuildingEditorDialog({
   isSaving,
   managementCompanies,
   neighborhoods,
+  services,
+  transitLines,
   onImagesChange,
+  onServicesChange,
+  onTransitLinesChange,
   updateDraft,
   onClose,
   onSave
@@ -1421,7 +1743,11 @@ function BuildingEditorDialog({
   isSaving: boolean;
   managementCompanies: ManagementCompany[];
   neighborhoods: Neighborhood[];
+  services: BuildingService[];
+  transitLines: BuildingTransitLine[];
   onImagesChange: (images: BuildingImage[]) => void;
+  onServicesChange: (services: BuildingService[]) => void;
+  onTransitLinesChange: (lines: BuildingTransitLine[]) => void;
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
   onClose: () => void;
   onSave: () => void;
@@ -1451,7 +1777,11 @@ function BuildingEditorDialog({
             images={buildingImages}
             managementCompanies={managementCompanies}
             neighborhoods={neighborhoods}
+            services={services}
+            transitLines={transitLines}
             onImagesChange={onImagesChange}
+            onServicesChange={onServicesChange}
+            onTransitLinesChange={onTransitLinesChange}
             updateDraft={updateDraft}
           />
         </div>
@@ -2531,6 +2861,34 @@ function createBuildingImageDraft(buildingID: string, index: number): BuildingIm
   };
 }
 
+function createBuildingServiceDraft(buildingID: string, option: BuildingServiceOption, index: number): BuildingService {
+  const now = new Date().toISOString();
+
+  return {
+    id: `new-building-service-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    building_id: buildingID,
+    title: option.title.trim().toUpperCase(),
+    system_image_name: option.systemImageName,
+    sort_order: index,
+    created_at: now
+  };
+}
+
+function createBuildingTransitLineDraft(buildingID: string, lineName: string, index: number): BuildingTransitLine {
+  const now = new Date().toISOString();
+
+  return {
+    id: `new-building-transit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    building_id: buildingID,
+    line_name: lineName.trim(),
+    station_name: null,
+    walk_minutes: null,
+    distance_miles: null,
+    sort_order: index,
+    created_at: now
+  };
+}
+
 function createUnitImageDraft(unitID: string, index: number): UnitImage {
   const now = new Date().toISOString();
 
@@ -2751,6 +3109,80 @@ async function syncBuildingImages(buildingID: string, images: BuildingImage[]) {
   return (nextRows ?? []) as BuildingImage[];
 }
 
+async function syncBuildingServices(buildingID: string, services: BuildingService[]) {
+  const desiredServices = normalizeBuildingServices(services);
+  const { error: deleteError } = await supabase.from("building_services").delete().eq("building_id", buildingID);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  if (desiredServices.length > 0) {
+    const { error: insertError } = await supabase.from("building_services").insert(
+      desiredServices.map((service) => ({
+        building_id: buildingID,
+        title: service.title,
+        system_image_name: service.system_image_name,
+        sort_order: service.sort_order
+      }))
+    );
+
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+  }
+
+  const { data: nextRows, error: nextError } = await supabase
+    .from("building_services")
+    .select("*")
+    .eq("building_id", buildingID)
+    .order("sort_order", { ascending: true });
+
+  if (nextError) {
+    throw new Error(nextError.message);
+  }
+
+  return (nextRows ?? []) as BuildingService[];
+}
+
+async function syncBuildingTransitLines(buildingID: string, lines: BuildingTransitLine[]) {
+  const desiredLines = normalizeBuildingTransitLines(lines);
+  const { error: deleteError } = await supabase.from("building_transit_lines").delete().eq("building_id", buildingID);
+
+  if (deleteError) {
+    throw new Error(deleteError.message);
+  }
+
+  if (desiredLines.length > 0) {
+    const { error: insertError } = await supabase.from("building_transit_lines").insert(
+      desiredLines.map((line) => ({
+        building_id: buildingID,
+        line_name: line.line_name,
+        station_name: normalizeOptionalText(line.station_name),
+        walk_minutes: line.walk_minutes,
+        distance_miles: line.distance_miles,
+        sort_order: line.sort_order
+      }))
+    );
+
+    if (insertError) {
+      throw new Error(insertError.message);
+    }
+  }
+
+  const { data: nextRows, error: nextError } = await supabase
+    .from("building_transit_lines")
+    .select("*")
+    .eq("building_id", buildingID)
+    .order("sort_order", { ascending: true });
+
+  if (nextError) {
+    throw new Error(nextError.message);
+  }
+
+  return (nextRows ?? []) as BuildingTransitLine[];
+}
+
 async function syncUnitImages(unitID: string, images: UnitImage[]) {
   const desiredImages = normalizedPersistableImages(images);
   const { data: currentRows, error: currentError } = await supabase.from("unit_images").select("*").eq("unit_id", unitID);
@@ -2814,6 +3246,50 @@ function normalizedPersistableImages<TImage extends ImageRowBase>(images: TImage
     .filter((image) => image.url.length > 0);
 }
 
+function normalizeBuildingServices(services: BuildingService[]) {
+  const serviceByTitle = new Map<string, BuildingService>();
+
+  services.forEach((service) => {
+    const title = service.title.trim().toUpperCase();
+
+    if (!title) {
+      return;
+    }
+
+    serviceByTitle.set(normalizeChoiceValue(title), {
+      ...service,
+      title,
+      system_image_name: normalizeOptionalText(service.system_image_name) ?? fallbackServiceIcon(title)
+    });
+  });
+
+  return Array.from(serviceByTitle.values())
+    .sort((first, second) => compareChoiceOrder(first.title, second.title, buildingServiceOptions.map((option) => option.title)))
+    .map((service, index) => ({ ...service, sort_order: index }));
+}
+
+function normalizeBuildingTransitLines(lines: BuildingTransitLine[]) {
+  const lineByName = new Map<string, BuildingTransitLine>();
+
+  lines.forEach((line) => {
+    const lineName = line.line_name.trim();
+
+    if (!lineName) {
+      return;
+    }
+
+    lineByName.set(normalizeChoiceValue(lineName), {
+      ...line,
+      line_name: lineName,
+      station_name: normalizeOptionalText(line.station_name)
+    });
+  });
+
+  return Array.from(lineByName.values())
+    .sort((first, second) => compareChoiceOrder(first.line_name, second.line_name, transitLineOptions))
+    .map((line, index) => ({ ...line, sort_order: index }));
+}
+
 function normalizeMediaSort<TImage extends ImageRowBase>(images: TImage[]) {
   return images.slice().sort(compareMediaImageRows).map((image, index) => ({ ...image, sort_order: index * 10 }));
 }
@@ -2822,10 +3298,47 @@ function compareMediaImageRows(first: ImageRowBase, second: ImageRowBase) {
   return first.sort_order - second.sort_order || first.created_at.localeCompare(second.created_at) || first.id.localeCompare(second.id);
 }
 
+function compareSortableRows(first: { sort_order: number; created_at: string; id: string }, second: { sort_order: number; created_at: string; id: string }) {
+  return first.sort_order - second.sort_order || first.created_at.localeCompare(second.created_at) || first.id.localeCompare(second.id);
+}
+
 function normalizeOptionalText(value: string | null) {
   const trimmedValue = value?.trim() ?? "";
 
   return trimmedValue.length > 0 ? trimmedValue : null;
+}
+
+function normalizeChoiceValue(value: string) {
+  return value.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+function compareChoiceOrder(first: string, second: string, preferredOrder: string[]) {
+  const preferred = new Map(preferredOrder.map((value, index) => [normalizeChoiceValue(value), index]));
+  const firstIndex = preferred.get(normalizeChoiceValue(first)) ?? 999;
+  const secondIndex = preferred.get(normalizeChoiceValue(second)) ?? 999;
+
+  if (firstIndex !== secondIndex) {
+    return firstIndex - secondIndex;
+  }
+
+  return first.localeCompare(second);
+}
+
+function compareBuildingServiceOptions(first: BuildingServiceOption, second: BuildingServiceOption) {
+  return compareChoiceOrder(first.title, second.title, buildingServiceOptions.map((option) => option.title));
+}
+
+function serviceOptionLabel(title: string) {
+  return title
+    .toLowerCase()
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function fallbackServiceIcon(title: string) {
+  return buildingServiceOptions.find((option) => normalizeChoiceValue(option.title) === normalizeChoiceValue(title))?.systemImageName ?? "sparkles";
 }
 
 function isTemporaryID(id: string) {

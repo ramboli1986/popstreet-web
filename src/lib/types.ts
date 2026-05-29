@@ -84,6 +84,29 @@ export type Building = {
   management_companies?: Pick<ManagementCompany, "id" | "slug" | "name" | "website"> | null;
 };
 
+export type BuildingImageKind =
+  | "cover"
+  | "gallery"
+  | "story_video"
+  | "exterior"
+  | "lobby"
+  | "amenity"
+  | "gym"
+  | "rooftop"
+  | "pool"
+  | "common_area"
+  | "neighborhood";
+
+export type BuildingImage = {
+  id: string;
+  building_id: string;
+  kind: BuildingImageKind;
+  url: string;
+  alt_text: string | null;
+  sort_order: number;
+  created_at: string;
+};
+
 export type TourRequestStatus =
   | "submitted"
   | "link_provided"
@@ -158,6 +181,27 @@ export type Unit = {
   description_labels: string[];
   created_at: string;
   updated_at: string;
+};
+
+export type UnitImageKind =
+  | "photo"
+  | "floor_plan"
+  | "living_room"
+  | "bedroom"
+  | "kitchen"
+  | "bathroom"
+  | "closet"
+  | "balcony"
+  | "view";
+
+export type UnitImage = {
+  id: string;
+  unit_id: string;
+  kind: UnitImageKind;
+  url: string;
+  alt_text: string | null;
+  sort_order: number;
+  created_at: string;
 };
 
 export type UnitListing = {

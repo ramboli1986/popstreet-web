@@ -11,7 +11,11 @@ import {
   type UIEvent
 } from "react";
 import {
+  ArrowDown,
+  ArrowUp,
   EyeOff,
+  ImageIcon,
+  Pencil,
   Plus,
   RefreshCcw,
   Save,
@@ -34,10 +38,14 @@ import { useI18n } from "@/lib/i18n";
 import type {
   AccountProfile,
   Building,
+  BuildingImage,
+  BuildingImageKind,
   ListingStatus,
   ManagementCompany,
   Neighborhood,
   Unit,
+  UnitImage,
+  UnitImageKind,
   UnitListing,
   UnitWithListing
 } from "@/lib/types";
@@ -58,6 +66,30 @@ type UnitStatusFilter = "all" | ListingStatus;
 type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 
 const listingStatuses: ListingStatus[] = ["available", "pending", "unavailable", "rented", "archived"];
+const buildingImageKinds: BuildingImageKind[] = [
+  "gallery",
+  "exterior",
+  "lobby",
+  "amenity",
+  "gym",
+  "rooftop",
+  "pool",
+  "common_area",
+  "neighborhood",
+  "cover",
+  "story_video"
+];
+const unitImageKinds: UnitImageKind[] = [
+  "photo",
+  "living_room",
+  "bedroom",
+  "kitchen",
+  "bathroom",
+  "closet",
+  "balcony",
+  "view",
+  "floor_plan"
+];
 const leaseMonthOptions = Array.from({ length: 15 }, (_item, index) => index + 10);
 const freeMonthOptions = Array.from({ length: 13 }, (_item, index) => index * 0.5);
 const buildingBatchSize = 25;
@@ -89,6 +121,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const { language, t } = useI18n();
   const locale = language === "zh" ? "zh-CN" : "en-US";
   const [buildings, setBuildings] = useState<Building[]>([]);
+  const [buildingImages, setBuildingImages] = useState<BuildingImage[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [managementCompanies, setManagementCompanies] = useState<ManagementCompany[]>([]);
   const [unitIndex, setUnitIndex] = useState<UnitIndex[]>([]);
@@ -96,8 +129,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null);
   const [draft, setDraft] = useState<Building | null>(null);
   const [units, setUnits] = useState<UnitWithListing[]>([]);
+  const [unitImages, setUnitImages] = useState<UnitImage[]>([]);
   const [isBuildingEditorOpen, setIsBuildingEditorOpen] = useState(false);
+  const [unitListBuilding, setUnitListBuilding] = useState<Building | null>(null);
   const [unitDialogDraft, setUnitDialogDraft] = useState<UnitWithListing | null>(null);
+  const [deletingUnitID, setDeletingUnitID] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
@@ -120,7 +156,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setIsLoading(true);
     setError(null);
 
-    const [buildingResult, neighborhoodResult, companyResult, unitResult, listingResult] = await Promise.all([
+    const [buildingResult, neighborhoodResult, companyResult, unitResult, listingResult, buildingImageResult] = await Promise.all([
       supabase
         .from("buildings")
         .select("*, neighborhoods(name, slug), management_companies(id, slug, name, website)")
@@ -129,18 +165,27 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       supabase.from("neighborhoods").select("id, slug, name, city, state").order("name"),
       supabase.from("management_companies").select("*").order("name"),
       supabase.from("units").select("id, building_id").limit(5000),
-      supabase.from("unit_listings").select("*").order("updated_at", { ascending: false }).limit(5000)
+      supabase.from("unit_listings").select("*").order("updated_at", { ascending: false }).limit(5000),
+      supabase.from("building_images").select("*").order("sort_order").limit(10000)
     ]);
 
     setIsLoading(false);
 
-    if (buildingResult.error || neighborhoodResult.error || companyResult.error || unitResult.error || listingResult.error) {
+    if (
+      buildingResult.error ||
+      neighborhoodResult.error ||
+      companyResult.error ||
+      unitResult.error ||
+      listingResult.error ||
+      buildingImageResult.error
+    ) {
       setError(
         buildingResult.error?.message ??
           neighborhoodResult.error?.message ??
           companyResult.error?.message ??
           unitResult.error?.message ??
           listingResult.error?.message ??
+          buildingImageResult.error?.message ??
           "Could not load inventory."
       );
       return;
@@ -157,6 +202,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setManagementCompanies((companyResult.data ?? []) as ManagementCompany[]);
     setUnitIndex((unitResult.data ?? []) as UnitIndex[]);
     setListingIndex((listingResult.data ?? []) as UnitListing[]);
+    setBuildingImages((buildingImageResult.data ?? []) as BuildingImage[]);
     setSelectedBuilding(nextSelected);
     setDraft(nextSelected ? { ...nextSelected } : null);
   }, [selectedBuilding]);
@@ -173,23 +219,26 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
     if (baseUnits.length === 0) {
       setUnits([]);
+      setUnitImages([]);
       return;
     }
 
-    const { data: listingRows, error: listingError } = await supabase
-      .from("unit_listings")
-      .select("*")
-      .order("updated_at", { ascending: false })
-      .limit(10000);
+    const [listingResult, imageResult] = await Promise.all([
+      supabase.from("unit_listings").select("*").order("updated_at", { ascending: false }).limit(10000),
+      supabase.from("unit_images").select("*").order("sort_order").limit(20000)
+    ]);
 
-    if (listingError) {
-      setError(listingError.message);
+    if (listingResult.error || imageResult.error) {
+      setError(listingResult.error?.message ?? imageResult.error?.message ?? "Could not load unit details.");
       setUnits(baseUnits.map((unit) => ({ ...unit, listing: null })));
+      if (imageResult.data) {
+        setUnitImages(imageResult.data as UnitImage[]);
+      }
       return;
     }
 
     const listingsByUnit = new Map<string, UnitListing>();
-    const nextListings = (listingRows ?? []) as UnitListing[];
+    const nextListings = (listingResult.data ?? []) as UnitListing[];
 
     nextListings.forEach((listing) => {
       if (!listingsByUnit.has(listing.unit_id)) {
@@ -198,6 +247,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     });
 
     setListingIndex(nextListings);
+    setUnitImages((imageResult.data ?? []) as UnitImage[]);
     setUnits(baseUnits.map((unit) => ({ ...unit, listing: listingsByUnit.get(unit.id) ?? null })));
   }, []);
 
@@ -430,6 +480,27 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     [buildingByID, selectedBuilding, unitDialogDraft]
   );
 
+  const buildingImagesForDraft = useMemo(
+    () =>
+      draft
+        ? buildingImages.filter((image) => image.building_id === draft.id).sort(compareMediaImageRows)
+        : [],
+    [buildingImages, draft]
+  );
+
+  const unitImagesForDialog = useMemo(
+    () =>
+      unitDialogDraft
+        ? unitImages.filter((image) => image.unit_id === unitDialogDraft.id).sort(compareMediaImageRows)
+        : [],
+    [unitDialogDraft, unitImages]
+  );
+
+  const unitListUnits = useMemo(
+    () => (unitListBuilding ? units.filter((unit) => unit.building_id === unitListBuilding.id) : []),
+    [unitListBuilding, units]
+  );
+
   function selectBuilding(building: Building) {
     setSelectedBuilding(building);
     setDraft({ ...building });
@@ -439,6 +510,17 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
   function updateDraft<K extends keyof Building>(key: K, value: Building[K]) {
     setDraft((current) => (current ? { ...current, [key]: value } : current));
+  }
+
+  function updateBuildingImageDrafts(nextImages: BuildingImage[]) {
+    if (!draft) {
+      return;
+    }
+
+    setBuildingImages((current) => [
+      ...current.filter((image) => image.building_id !== draft.id),
+      ...nextImages
+    ]);
   }
 
   const updateDraftCoordinate = useCallback(
@@ -527,19 +609,34 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           .select("*, neighborhoods(name, slug), management_companies(id, slug, name, website)")
           .single();
 
-    setIsSaving(false);
-
     if (result.error) {
+      setIsSaving(false);
       setError(result.error.message);
       return;
     }
 
     const savedBuilding = result.data as Building;
+    const imagesForDraft = buildingImages.filter((image) => image.building_id === draft.id);
+    let syncedImages: BuildingImage[] = [];
+
+    try {
+      syncedImages = await syncBuildingImages(savedBuilding.id, imagesForDraft);
+    } catch (syncError) {
+      setIsSaving(false);
+      setError(syncError instanceof Error ? syncError.message : "Building saved, but images could not be saved.");
+      return;
+    }
+
+    setIsSaving(false);
     setMessage(isNew ? "Building created." : "Building saved.");
     setBuildings((current) => {
       const withoutDraft = current.filter((building) => building.id !== draft.id && building.id !== savedBuilding.id);
       return [savedBuilding, ...withoutDraft];
     });
+    setBuildingImages((current) => [
+      ...current.filter((image) => image.building_id !== draft.id && image.building_id !== savedBuilding.id),
+      ...syncedImages
+    ]);
     setSelectedBuilding(savedBuilding);
     setDraft({ ...savedBuilding });
     setIsBuildingEditorOpen(false);
@@ -575,8 +672,10 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     const nextSelected = selectedBuilding?.id === building.id ? remaining[0] ?? null : selectedBuilding;
 
     setBuildings(remaining);
+    setBuildingImages((current) => current.filter((image) => image.building_id !== building.id));
     setSelectedBuilding(nextSelected);
     setDraft(nextSelected ? { ...nextSelected } : null);
+    setUnitListBuilding((current) => (current?.id === building.id ? null : current));
     setIsBuildingEditorOpen(false);
     setMessage("Building deleted.");
   }
@@ -603,6 +702,42 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     }
 
     setUnitDialogDraft(unit);
+  }
+
+  function openUnitList(building: Building) {
+    selectBuilding(building);
+    setUnitListBuilding(building);
+  }
+
+  async function deleteUnitFromList(unit: UnitWithListing) {
+    if (!canEdit || unit.id.startsWith("new-")) {
+      return;
+    }
+
+    const confirmed = window.confirm(`Delete unit ${unit.unit_number || unit.name || "this unit"}? This also removes its listing history.`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingUnitID(unit.id);
+    setError(null);
+    setMessage(null);
+
+    const { error: deleteError } = await supabase.from("units").delete().eq("id", unit.id);
+
+    setDeletingUnitID(null);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    setUnitDialogDraft((current) => (current?.id === unit.id ? null : current));
+    setUnitImages((current) => current.filter((image) => image.unit_id !== unit.id));
+    setMessage("Unit deleted.");
+    await loadUnits();
+    await loadBuildings();
   }
 
   function openAddUnitFromUnitsPage() {
@@ -733,12 +868,14 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
         {isBuildingEditorOpen && draft ? (
           <BuildingEditorDialog
+            buildingImages={buildingImagesForDraft}
             canEdit={canEdit}
             draft={draft}
             isSaving={isSaving}
             managementCompanies={managementCompanies}
             neighborhoods={neighborhoods}
             onClose={() => setIsBuildingEditorOpen(false)}
+            onImagesChange={updateBuildingImageDrafts}
             onSave={saveBuilding}
             updateDraft={updateDraft}
           />
@@ -899,6 +1036,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
                 )
               }
               onOpen={openBuildingEditor}
+              onOpenUnits={openUnitList}
             />
           </section>
 
@@ -907,14 +1045,29 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
       {isBuildingEditorOpen && draft ? (
         <BuildingEditorDialog
+          buildingImages={buildingImagesForDraft}
           canEdit={canEdit}
           draft={draft}
           isSaving={isSaving}
           managementCompanies={managementCompanies}
           neighborhoods={neighborhoods}
           onClose={() => setIsBuildingEditorOpen(false)}
+          onImagesChange={updateBuildingImageDrafts}
           onSave={saveBuilding}
           updateDraft={updateDraft}
+        />
+      ) : null}
+
+      {unitListBuilding ? (
+        <BuildingUnitListDialog
+          building={unitListBuilding}
+          canEdit={canEdit}
+          deletingUnitID={deletingUnitID}
+          onAddUnit={openAddUnitDialog}
+          onClose={() => setUnitListBuilding(null)}
+          onDeleteUnit={deleteUnitFromList}
+          onEditUnit={openEditUnitDialog}
+          units={unitListUnits}
         />
       ) : null}
 
@@ -922,6 +1075,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         <UnitEditorDialog
           building={unitDialogBuilding}
           canEdit={canEdit}
+          images={unitImagesForDialog}
           onClose={() => setUnitDialogDraft(null)}
           onSaved={async () => {
             await loadUnits();
@@ -944,6 +1098,7 @@ function BuildingTable({
   onDelete,
   onLoadMore,
   onOpen,
+  onOpenUnits,
 }: {
   buildings: Building[];
   canEdit: boolean;
@@ -954,6 +1109,7 @@ function BuildingTable({
   onDelete: (building: Building) => void;
   onLoadMore: (event: UIEvent<HTMLDivElement>) => void;
   onOpen: (building: Building) => void;
+  onOpenUnits: (building: Building) => void;
 }) {
   if (buildings.length === 0) {
     return <EmptyState title="No buildings found" body="Try clearing the search or location filters." />;
@@ -978,39 +1134,34 @@ function BuildingTable({
           {buildings.map((building, index) => {
             const metric = metrics.get(building.id);
             const isSelected = selectedBuilding?.id === building.id;
-            const buildingWebsite = building.website;
             const companyName = buildingCompanyName(building);
-            const companyWebsite = building.management_companies?.website ?? null;
 
             return (
               <tr
                 className={`clickable-row ${isSelected ? "selected" : ""}`}
                 key={building.id}
-                onClick={() => onOpen(building)}
+                onClick={() => onOpenUnits(building)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
-                    onOpen(building);
+                    onOpenUnits(building);
                   }
                 }}
                 tabIndex={0}
               >
                 <td className="row-index">{index + 1}</td>
                 <td>
-                  {buildingWebsite ? (
-                    <a
-                      className="table-primary-link table-external-link"
-                      href={buildingWebsite}
-                      onClick={(event) => event.stopPropagation()}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {building.name}
-                    </a>
-                  ) : (
-                    <span className="table-primary-text">{building.name}</span>
-                  )}
+                  <button
+                    className="table-primary-link table-name-action"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onOpen(building);
+                    }}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    type="button"
+                  >
+                    {building.name}
+                  </button>
                   <div className="table-subtext">{building.address}</div>
                 </td>
                 <td>
@@ -1020,20 +1171,7 @@ function BuildingTable({
                   </div>
                 </td>
                 <td>
-                  {companyWebsite ? (
-                    <a
-                      className="table-primary-link table-external-link"
-                      href={companyWebsite}
-                      onClick={(event) => event.stopPropagation()}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {companyName}
-                    </a>
-                  ) : (
-                    <strong>{companyName}</strong>
-                  )}
+                  <strong>{companyName}</strong>
                 </td>
                 <td>
                   <strong>{metric?.availableCount ?? 0}</strong>
@@ -1084,14 +1222,18 @@ function BuildingTable({
 function BuildingEditor({
   canEdit,
   draft,
+  images,
   managementCompanies,
   neighborhoods,
+  onImagesChange,
   updateDraft
 }: {
   canEdit: boolean;
   draft: Building;
+  images: BuildingImage[];
   managementCompanies: ManagementCompany[];
   neighborhoods: Neighborhood[];
+  onImagesChange: (images: BuildingImage[]) => void;
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
 }) {
   return (
@@ -1227,25 +1369,39 @@ function BuildingEditor({
         </label>
       </div>
 
+      <ImageCollectionEditor
+        canEdit={canEdit}
+        createImage={() => createBuildingImageDraft(draft.id, images.length)}
+        helpText="Building images are mixed into the detail gallery after unit photos. Use specific types for exterior, lobby, amenity, and neighborhood shots."
+        images={images}
+        kinds={buildingImageKinds}
+        onChange={onImagesChange}
+        title="Building media"
+      />
+
     </section>
   );
 }
 
 function BuildingEditorDialog({
+  buildingImages,
   canEdit,
   draft,
   isSaving,
   managementCompanies,
   neighborhoods,
+  onImagesChange,
   updateDraft,
   onClose,
   onSave
 }: {
+  buildingImages: BuildingImage[];
   canEdit: boolean;
   draft: Building;
   isSaving: boolean;
   managementCompanies: ManagementCompany[];
   neighborhoods: Neighborhood[];
+  onImagesChange: (images: BuildingImage[]) => void;
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
   onClose: () => void;
   onSave: () => void;
@@ -1272,8 +1428,10 @@ function BuildingEditorDialog({
           <BuildingEditor
             canEdit={canEdit}
             draft={draft}
+            images={buildingImages}
             managementCompanies={managementCompanies}
             neighborhoods={neighborhoods}
+            onImagesChange={onImagesChange}
             updateDraft={updateDraft}
           />
         </div>
@@ -1335,6 +1493,164 @@ function UnitManager({
         </div>
       )}
     </section>
+  );
+}
+
+function BuildingUnitListDialog({
+  building,
+  canEdit,
+  deletingUnitID,
+  onAddUnit,
+  onClose,
+  onDeleteUnit,
+  onEditUnit,
+  units
+}: {
+  building: Building;
+  canEdit: boolean;
+  deletingUnitID: string | null;
+  onAddUnit: (building: Building) => void;
+  onClose: () => void;
+  onDeleteUnit: (unit: UnitWithListing) => Promise<void> | void;
+  onEditUnit: (unit: UnitWithListing) => void;
+  units: UnitWithListing[];
+}) {
+  const availableCount = units.filter((unit) => (unit.listing ?? defaultListing(unit.id)).status === "available").length;
+
+  return (
+    <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
+      <aside
+        className="side-drawer building-units-drawer"
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="drawer-header">
+          <div>
+            <div className="eyebrow">Unit list</div>
+            <h3>{building.name}</h3>
+            <p className="drawer-header-subtitle">
+              {availableCount} available / {units.length} total
+            </p>
+          </div>
+          <div className="drawer-header-actions">
+            <button className="button compact-button" disabled={!canEdit} onClick={() => onAddUnit(building)} type="button">
+              <Plus size={15} />
+              Add unit
+            </button>
+            <button className="icon-button" onClick={onClose} title="Close" type="button">
+              <X size={16} />
+            </button>
+          </div>
+        </header>
+
+        <div className="drawer-body">
+          {units.length === 0 ? (
+            <EmptyState title="No units yet" body="Add the first unit for this building." />
+          ) : (
+            <div className="building-unit-list">
+              <div className="building-unit-list-head">
+                <span>Unit</span>
+                <span>Layout</span>
+                <span>Price</span>
+                <span>Status</span>
+                <span>Actions</span>
+              </div>
+              {units.map((unit) => (
+                <BuildingUnitListRow
+                  canEdit={canEdit}
+                  isDeleting={deletingUnitID === unit.id}
+                  key={unit.id}
+                  onDeleteUnit={onDeleteUnit}
+                  onEditUnit={onEditUnit}
+                  unit={unit}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function BuildingUnitListRow({
+  canEdit,
+  isDeleting,
+  onDeleteUnit,
+  onEditUnit,
+  unit
+}: {
+  canEdit: boolean;
+  isDeleting: boolean;
+  onDeleteUnit: (unit: UnitWithListing) => Promise<void> | void;
+  onEditUnit: (unit: UnitWithListing) => void;
+  unit: UnitWithListing;
+}) {
+  const listing = unit.listing ?? defaultListing(unit.id);
+
+  return (
+    <div
+      className="building-unit-row clickable-row"
+      onClick={() => onEditUnit(unit)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onEditUnit(unit);
+        }
+      }}
+      tabIndex={0}
+    >
+      <div className="building-unit-identity">
+        <button
+          className="table-primary-link unit-number-link"
+          onClick={(event) => {
+            event.stopPropagation();
+            onEditUnit(unit);
+          }}
+          type="button"
+        >
+          {unit.unit_number || "No unit #"}
+        </button>
+        <span>{unit.name || "Untitled unit"}</span>
+      </div>
+      <div className="building-unit-meta">
+        <strong>{unitLayoutLabel(unit)}</strong>
+        <span>{unit.sqft ? `${unit.sqft.toLocaleString()} sqft` : "Sqft not set"}</span>
+      </div>
+      <div className="building-unit-meta">
+        <strong>{formatMoneyFromCents(listing.net_price_cents)}</strong>
+        <span>{leaseDealLabel(listing.lease_months, listing.free_months) || "No deal"}</span>
+      </div>
+      <div>
+        <span className={`status-pill ${listing.status === "available" ? "active" : "suspended"}`}>{listing.status}</span>
+      </div>
+      <div className="row-actions building-unit-actions">
+        <button
+          className="mini-action"
+          onClick={(event) => {
+            event.stopPropagation();
+            onEditUnit(unit);
+          }}
+          type="button"
+        >
+          <Pencil size={13} />
+          Edit
+        </button>
+        <button
+          className="icon-button danger"
+          disabled={!canEdit || isDeleting}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDeleteUnit(unit);
+          }}
+          title="Delete unit"
+          type="button"
+        >
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1406,25 +1722,29 @@ function UnitEditorDialog({
   building,
   unit,
   canEdit,
+  images,
   onClose,
   onSaved
 }: {
   building: Building | null;
   unit: UnitWithListing;
   canEdit: boolean;
+  images: UnitImage[];
   onClose: () => void;
   onSaved: () => Promise<void> | void;
 }) {
   const [draft, setDraft] = useState(unit);
+  const [imageDrafts, setImageDrafts] = useState<UnitImage[]>(images);
   const [leaseMonths, setLeaseMonths] = useState(() => leaseMonthsFromListing(unit.listing ?? defaultListing(unit.id)));
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setDraft(unit);
+    setImageDrafts(images);
     setLeaseMonths(leaseMonthsFromListing(unit.listing ?? defaultListing(unit.id)));
     setError(null);
-  }, [unit]);
+  }, [images, unit]);
 
   function updateListingDraft(patch: Partial<UnitListing>, nextLeaseMonths = leaseMonths) {
     setDraft((current) => {
@@ -1545,6 +1865,14 @@ function UnitEditorDialog({
         setIsSaving(false);
         return;
       }
+    }
+
+    try {
+      await syncUnitImages(savedUnit.id, imageDrafts);
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : "Unit saved, but images could not be saved.");
+      setIsSaving(false);
+      return;
     }
 
     setIsSaving(false);
@@ -1690,6 +2018,18 @@ function UnitEditorDialog({
           </section>
 
           <section className="unit-editor-card">
+            <ImageCollectionEditor
+              canEdit={canEdit}
+              createImage={() => createUnitImageDraft(draft.id, imageDrafts.length)}
+              helpText="Unit photos should describe the rooms first. Use floor_plan only for the floor plan image."
+              images={imageDrafts}
+              kinds={unitImageKinds}
+              onChange={setImageDrafts}
+              title="Unit media"
+            />
+          </section>
+
+          <section className="unit-editor-card">
             <div className="form-section-title">Price</div>
             <div className="form-grid dense">
               <CentsInput
@@ -1773,6 +2113,175 @@ function UnitEditorDialog({
         </footer>
       </aside>
     </div>
+  );
+}
+
+type ImageRowBase = {
+  id: string;
+  kind: string;
+  url: string;
+  alt_text: string | null;
+  sort_order: number;
+  created_at: string;
+};
+
+function ImageCollectionEditor<TImage extends ImageRowBase>({
+  canEdit,
+  createImage,
+  helpText,
+  images,
+  kinds,
+  onChange,
+  title
+}: {
+  canEdit: boolean;
+  createImage: () => TImage;
+  helpText: string;
+  images: TImage[];
+  kinds: readonly string[];
+  onChange: (images: TImage[]) => void;
+  title: string;
+}) {
+  const sortedImages = useMemo(() => images.slice().sort(compareMediaImageRows), [images]);
+  const kindOptions = useMemo(
+    () => Array.from(new Set([...kinds, ...images.map((image) => image.kind)])),
+    [images, kinds]
+  );
+
+  function updateImage(imageID: string, patch: Partial<TImage>) {
+    onChange(images.map((image) => (image.id === imageID ? { ...image, ...patch } : image)));
+  }
+
+  function removeImage(imageID: string) {
+    onChange(normalizeMediaSort(images.filter((image) => image.id !== imageID)));
+  }
+
+  function addImage() {
+    onChange(normalizeMediaSort([...sortedImages, createImage()]));
+  }
+
+  function moveImage(imageID: string, direction: -1 | 1) {
+    const currentIndex = sortedImages.findIndex((image) => image.id === imageID);
+    const nextIndex = currentIndex + direction;
+
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= sortedImages.length) {
+      return;
+    }
+
+    const reorderedImages = sortedImages.slice();
+    const [movedImage] = reorderedImages.splice(currentIndex, 1);
+
+    reorderedImages.splice(nextIndex, 0, movedImage);
+    onChange(normalizeMediaSort(reorderedImages));
+  }
+
+  return (
+    <section className="media-editor">
+      <div className="media-editor-head">
+        <div>
+          <div className="form-section-title">{title}</div>
+          <p>{helpText}</p>
+        </div>
+        <button className="ghost-button compact-button" disabled={!canEdit} onClick={addImage} type="button">
+          <Plus size={14} />
+          Add image
+        </button>
+      </div>
+
+      {sortedImages.length === 0 ? (
+        <div className="media-empty">No images yet.</div>
+      ) : (
+        <div className="media-list">
+          {sortedImages.map((image, index) => (
+            <div className="media-row" key={image.id}>
+              <div className="media-thumb">
+                {image.url.trim() ? (
+                  <span
+                    aria-hidden="true"
+                    className="media-thumb-image"
+                    style={{ backgroundImage: `url(${JSON.stringify(image.url)})` }}
+                  />
+                ) : (
+                  <ImageIcon aria-hidden="true" size={18} />
+                )}
+              </div>
+              <div className="media-row-fields">
+                <label className="field">
+                  <span>Type</span>
+                  <select
+                    disabled={!canEdit}
+                    value={image.kind}
+                    onChange={(event) => updateImage(image.id, { kind: event.target.value } as Partial<TImage>)}
+                  >
+                    {kindOptions.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {imageKindLabel(kind)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field media-url-field">
+                  <span>Image URL</span>
+                  <input
+                    disabled={!canEdit}
+                    value={image.url}
+                    onChange={(event) => updateImage(image.id, { url: event.target.value } as Partial<TImage>)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Alt text</span>
+                  <input
+                    disabled={!canEdit}
+                    value={image.alt_text ?? ""}
+                    onChange={(event) => updateImage(image.id, { alt_text: event.target.value || null } as Partial<TImage>)}
+                  />
+                </label>
+                <label className="field">
+                  <span>Sort</span>
+                  <input
+                    disabled={!canEdit}
+                    type="number"
+                    value={image.sort_order}
+                    onChange={(event) =>
+                      updateImage(image.id, { sort_order: Number(event.target.value) || 0 } as Partial<TImage>)
+                    }
+                  />
+                </label>
+              </div>
+              <div className="media-actions">
+                <button
+                  className="icon-button"
+                  disabled={!canEdit || index === 0}
+                  onClick={() => moveImage(image.id, -1)}
+                  title="Move up"
+                  type="button"
+                >
+                  <ArrowUp size={14} />
+                </button>
+                <button
+                  className="icon-button"
+                  disabled={!canEdit || index === sortedImages.length - 1}
+                  onClick={() => moveImage(image.id, 1)}
+                  title="Move down"
+                  type="button"
+                >
+                  <ArrowDown size={14} />
+                </button>
+                <button
+                  className="icon-button danger"
+                  disabled={!canEdit}
+                  onClick={() => removeImage(image.id)}
+                  title="Remove"
+                  type="button"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1961,6 +2470,34 @@ function LoadMoreStatus({ shown, total }: { shown: number; total: number }) {
   );
 }
 
+function createBuildingImageDraft(buildingID: string, index: number): BuildingImage {
+  const now = new Date().toISOString();
+
+  return {
+    id: `new-building-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    building_id: buildingID,
+    kind: "gallery",
+    url: "",
+    alt_text: null,
+    sort_order: index * 10,
+    created_at: now
+  };
+}
+
+function createUnitImageDraft(unitID: string, index: number): UnitImage {
+  const now = new Date().toISOString();
+
+  return {
+    id: `new-unit-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    unit_id: unitID,
+    kind: "photo",
+    url: "",
+    alt_text: null,
+    sort_order: index * 10,
+    created_at: now
+  };
+}
+
 function createUnitDraft(building: Building): UnitWithListing {
   const now = new Date().toISOString();
   const draftID = `new-unit-${Date.now()}`;
@@ -2036,6 +2573,10 @@ function leaseDealLabel(leaseMonths: number, freeMonths: number) {
   return `${formatMonthValue(leaseMonths)}MO + ${formatMonthValue(freeMonths)}MO FREE`;
 }
 
+function unitLayoutLabel(unit: UnitWithListing) {
+  return `${unit.bedroom_count} bd / ${unit.bathroom_count} ba`;
+}
+
 function calculateNetPriceCents(marketPriceCents: number | null, leaseMonths: number, freeMonths: number) {
   if (!marketPriceCents || marketPriceCents <= 0) {
     return 0;
@@ -2089,4 +2630,148 @@ function buildingPayload(building: Building) {
     website: building.website,
     area: building.area
   };
+}
+
+async function syncBuildingImages(buildingID: string, images: BuildingImage[]) {
+  const desiredImages = normalizedPersistableImages(images);
+  const { data: currentRows, error: currentError } = await supabase
+    .from("building_images")
+    .select("*")
+    .eq("building_id", buildingID);
+
+  if (currentError) {
+    throw new Error(currentError.message);
+  }
+
+  const existingIDs = new Set(((currentRows ?? []) as BuildingImage[]).map((image) => image.id));
+  const desiredExistingIDs = new Set(
+    desiredImages.filter((image) => !isTemporaryID(image.id) && existingIDs.has(image.id)).map((image) => image.id)
+  );
+  const deletedIDs = Array.from(existingIDs).filter((id) => !desiredExistingIDs.has(id));
+
+  if (deletedIDs.length > 0) {
+    const { error: deleteError } = await supabase.from("building_images").delete().in("id", deletedIDs);
+
+    if (deleteError) {
+      throw new Error(deleteError.message);
+    }
+  }
+
+  for (const image of desiredImages) {
+    const payload = {
+      building_id: buildingID,
+      kind: image.kind as BuildingImageKind,
+      url: image.url,
+      alt_text: image.alt_text,
+      sort_order: image.sort_order
+    };
+    const result =
+      isTemporaryID(image.id) || !existingIDs.has(image.id)
+        ? await supabase.from("building_images").insert(payload)
+        : await supabase.from("building_images").update(payload).eq("id", image.id);
+
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+  }
+
+  const { data: nextRows, error: nextError } = await supabase
+    .from("building_images")
+    .select("*")
+    .eq("building_id", buildingID)
+    .order("sort_order", { ascending: true });
+
+  if (nextError) {
+    throw new Error(nextError.message);
+  }
+
+  return (nextRows ?? []) as BuildingImage[];
+}
+
+async function syncUnitImages(unitID: string, images: UnitImage[]) {
+  const desiredImages = normalizedPersistableImages(images);
+  const { data: currentRows, error: currentError } = await supabase.from("unit_images").select("*").eq("unit_id", unitID);
+
+  if (currentError) {
+    throw new Error(currentError.message);
+  }
+
+  const existingIDs = new Set(((currentRows ?? []) as UnitImage[]).map((image) => image.id));
+  const desiredExistingIDs = new Set(
+    desiredImages.filter((image) => !isTemporaryID(image.id) && existingIDs.has(image.id)).map((image) => image.id)
+  );
+  const deletedIDs = Array.from(existingIDs).filter((id) => !desiredExistingIDs.has(id));
+
+  if (deletedIDs.length > 0) {
+    const { error: deleteError } = await supabase.from("unit_images").delete().in("id", deletedIDs);
+
+    if (deleteError) {
+      throw new Error(deleteError.message);
+    }
+  }
+
+  for (const image of desiredImages) {
+    const payload = {
+      unit_id: unitID,
+      kind: image.kind as UnitImageKind,
+      url: image.url,
+      alt_text: image.alt_text,
+      sort_order: image.sort_order
+    };
+    const result =
+      isTemporaryID(image.id) || !existingIDs.has(image.id)
+        ? await supabase.from("unit_images").insert(payload)
+        : await supabase.from("unit_images").update(payload).eq("id", image.id);
+
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+  }
+
+  const { data: nextRows, error: nextError } = await supabase
+    .from("unit_images")
+    .select("*")
+    .eq("unit_id", unitID)
+    .order("sort_order", { ascending: true });
+
+  if (nextError) {
+    throw new Error(nextError.message);
+  }
+
+  return (nextRows ?? []) as UnitImage[];
+}
+
+function normalizedPersistableImages<TImage extends ImageRowBase>(images: TImage[]) {
+  return normalizeMediaSort(images)
+    .map((image) => ({
+      ...image,
+      url: image.url.trim(),
+      alt_text: normalizeOptionalText(image.alt_text)
+    }))
+    .filter((image) => image.url.length > 0);
+}
+
+function normalizeMediaSort<TImage extends ImageRowBase>(images: TImage[]) {
+  return images.slice().sort(compareMediaImageRows).map((image, index) => ({ ...image, sort_order: index * 10 }));
+}
+
+function compareMediaImageRows(first: ImageRowBase, second: ImageRowBase) {
+  return first.sort_order - second.sort_order || first.created_at.localeCompare(second.created_at) || first.id.localeCompare(second.id);
+}
+
+function normalizeOptionalText(value: string | null) {
+  const trimmedValue = value?.trim() ?? "";
+
+  return trimmedValue.length > 0 ? trimmedValue : null;
+}
+
+function isTemporaryID(id: string) {
+  return id.startsWith("new-");
+}
+
+function imageKindLabel(kind: string) {
+  return kind
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }

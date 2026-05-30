@@ -13,6 +13,7 @@ type CompanyManagerProps = {
 
 type BuildingCompanyLink = {
   id: string;
+  name: string;
   management_company_id: string | null;
 };
 
@@ -40,7 +41,7 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
 
     const [companyResult, buildingResult] = await Promise.all([
       supabase.from("management_companies").select("*").order("name"),
-      supabase.from("buildings").select("id, management_company_id").limit(5000)
+      supabase.from("buildings").select("id, name, management_company_id").order("name").limit(5000)
     ]);
 
     setIsLoading(false);
@@ -81,6 +82,26 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
     return counts;
   }, [buildingLinks]);
 
+  const linkedBuildingNames = useMemo(() => {
+    const names = new Map<string, string[]>();
+
+    buildingLinks.forEach((building) => {
+      if (!building.management_company_id) {
+        return;
+      }
+
+      const currentNames = names.get(building.management_company_id) ?? [];
+      currentNames.push(building.name);
+      names.set(building.management_company_id, currentNames);
+    });
+
+    names.forEach((buildingNames, companyID) => {
+      names.set(companyID, buildingNames.sort((first, second) => first.localeCompare(second)));
+    });
+
+    return names;
+  }, [buildingLinks]);
+
   const filteredCompanies = useMemo(() => {
     const query = search.trim().toLowerCase();
 
@@ -95,12 +116,13 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
         company.website,
         company.unit_count_label,
         company.notes,
-        ...company.key_assets
+        ...company.key_assets,
+        ...(linkedBuildingNames.get(company.id) ?? [])
       ]
         .filter(Boolean)
         .some((value) => value!.toLowerCase().includes(query))
     );
-  }, [companies, search]);
+  }, [companies, linkedBuildingNames, search]);
 
   const visibleCompanies = useMemo(
     () => filteredCompanies.slice(0, visibleCompanyCount),
@@ -270,44 +292,48 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
                 </tr>
               </thead>
               <tbody>
-                {visibleCompanies.map((company, index) => (
-                  <tr className="clickable-row" key={company.id} onClick={() => setDraft(company)} tabIndex={0}>
-                    <td className="row-index">{index + 1}</td>
-                    <td>
-                      <button
-                        className="table-primary-link"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setDraft(company);
-                        }}
-                        type="button"
-                      >
-                        {company.name}
-                      </button>
-                      <div className="table-subtext">{company.slug}</div>
-                    </td>
-                    <td>
-                      {company.website ? (
-                        <a className="table-primary-link muted" href={company.website} rel="noreferrer" target="_blank">
-                          {t("companies.website")} <ExternalLink size={13} />
-                        </a>
-                      ) : (
-                        <span className="table-subtext">{t("common.na")}</span>
-                      )}
-                    </td>
-                    <td>
-                      <span>{company.key_assets.slice(0, 2).join(", ") || t("common.na")}</span>
-                      {company.key_assets.length > 2 ? (
-                        <div className="table-subtext">
-                          {t("companies.more", { count: company.key_assets.length - 2 })}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td>{company.unit_count_label ?? company.estimated_unit_count?.toLocaleString(locale) ?? t("common.na")}</td>
-                    <td>{linkedBuildingCounts.get(company.id) ?? 0}</td>
-                    <td>{formatDate(company.updated_at)}</td>
-                  </tr>
-                ))}
+                {visibleCompanies.map((company, index) => {
+                  const buildingNames = linkedBuildingNames.get(company.id) ?? [];
+
+                  return (
+                    <tr className="clickable-row" key={company.id} onClick={() => setDraft(company)} tabIndex={0}>
+                      <td className="row-index">{index + 1}</td>
+                      <td>
+                        <button
+                          className="table-primary-link"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDraft(company);
+                          }}
+                          type="button"
+                        >
+                          {company.name}
+                        </button>
+                        <div className="table-subtext">{company.slug}</div>
+                      </td>
+                      <td>
+                        {company.website ? (
+                          <a className="table-primary-link muted" href={company.website} rel="noreferrer" target="_blank">
+                            {t("companies.website")} <ExternalLink size={13} />
+                          </a>
+                        ) : (
+                          <span className="table-subtext">{t("common.na")}</span>
+                        )}
+                      </td>
+                      <td>
+                        <span>{buildingNames.slice(0, 2).join(", ") || t("common.na")}</span>
+                        {buildingNames.length > 2 ? (
+                          <div className="table-subtext">
+                            {t("companies.more", { count: buildingNames.length - 2 })}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td>{company.unit_count_label ?? company.estimated_unit_count?.toLocaleString(locale) ?? t("common.na")}</td>
+                      <td>{linkedBuildingCounts.get(company.id) ?? 0}</td>
+                      <td>{formatDate(company.updated_at)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             <LoadMoreStatus shown={visibleCompanies.length} total={filteredCompanies.length} />

@@ -2098,12 +2098,12 @@ strong {
 }
 
 .global-unit-table {
-  min-width: 1240px;
+  min-width: 1140px;
 }
 
 .global-unit-table .unit-table-head,
 .global-unit-table .unit-table-row {
-  grid-template-columns: 0.9fr 1.35fr 1fr 1.2fr 1.05fr 0.72fr 0.72fr;
+  grid-template-columns: 0.9fr 1.35fr 1fr 1.2fr 1.05fr 0.72fr;
 }
 
 .unit-table-head {

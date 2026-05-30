@@ -64,7 +64,7 @@ type BuildingMetric = {
   minNetPrice: number | null;
   latestListingAt: string | null;
 };
-type UnitStatusFilter = "all" | ListingStatus;
+type UnitStatusFilter = "all" | "listed" | "unlisted";
 type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 type BuildingUnitListFilter = "all" | "listed" | "unlisted";
 type BuildingServiceOption = {
@@ -187,7 +187,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [areaFilter, setAreaFilter] = useState("all");
   const [unitSearch, setUnitSearch] = useState("");
   const [unitBuildingFilter, setUnitBuildingFilter] = useState("all");
-  const [unitStatusFilter, setUnitStatusFilter] = useState<UnitStatusFilter>("all");
+  const [unitStatusFilter, setUnitStatusFilter] = useState<UnitStatusFilter>("listed");
   const [unitBedroomFilter, setUnitBedroomFilter] = useState<UnitBedroomFilter>("all");
   const [visibleBuildingCount, setVisibleBuildingCount] = useState(buildingBatchSize);
   const [visibleUnitCount, setVisibleUnitCount] = useState(unitBatchSize);
@@ -491,8 +491,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     return units.filter((unit) => {
       const building = buildingByID.get(unit.building_id);
       const listing = unit.listing ?? defaultListing(unit.id);
+      const isListed = isListedUnit(unit);
       const matchesBuilding = unitBuildingFilter === "all" || unit.building_id === unitBuildingFilter;
-      const matchesStatus = unitStatusFilter === "all" || listing.status === unitStatusFilter;
+      const matchesStatus =
+        unitStatusFilter === "all" ||
+        (unitStatusFilter === "listed" ? isListed : !isListed);
       const matchesBedroom =
         unitBedroomFilter === "all" ||
         (unitBedroomFilter === "3plus" ? unit.bedroom_count >= 3 : unit.bedroom_count === Number(unitBedroomFilter));
@@ -1083,10 +1086,9 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             ))}
           </select>
           <select value={unitStatusFilter} onChange={(event) => setUnitStatusFilter(event.target.value as UnitStatusFilter)}>
-            <option value="all">{t("manager.allStatus")}</option>
-            {listingStatuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
+            {(["listed", "unlisted", "all"] as UnitStatusFilter[]).map((filter) => (
+              <option key={filter} value={filter}>
+                {buildingUnitFilterLabel(filter)}
               </option>
             ))}
           </select>
@@ -1152,14 +1154,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       {mode === "units" ? (
         <UnitManager
           buildingsByID={buildingByID}
-          canEdit={canEdit}
           filteredCount={filteredUnits.length}
           onLoadMore={(event) =>
             handleScrollLoadMore(event, visibleUnitCount, filteredUnits.length, setVisibleUnitCount, unitBatchSize)
           }
           onEditUnit={openEditUnitDialog}
-          onUpdateUnitPublication={updateUnitPublicationFromList}
-          publicationUnitID={publicationUnitID}
           totalCount={units.length}
           units={visibleUnits}
         />
@@ -1794,26 +1793,17 @@ function BuildingEditorDialog({
 
 function UnitManager({
   buildingsByID,
-  canEdit,
   units,
   filteredCount,
   onLoadMore,
   onEditUnit,
-  onUpdateUnitPublication,
-  publicationUnitID,
   totalCount
 }: {
   buildingsByID: Map<string, Building>;
-  canEdit: boolean;
   units: UnitWithListing[];
   filteredCount: number;
   onLoadMore: (event: UIEvent<HTMLDivElement>) => void;
   onEditUnit: (unit: UnitWithListing) => void;
-  onUpdateUnitPublication: (
-    unit: UnitWithListing,
-    nextStatus: Extract<ListingStatus, "available" | "unavailable">
-  ) => Promise<void> | void;
-  publicationUnitID: string | null;
   totalCount: number;
 }) {
   return (
@@ -1840,16 +1830,12 @@ function UnitManager({
               <span>Price</span>
               <span>Deal</span>
               <span>Status</span>
-              <span>Actions</span>
             </div>
             {units.map((unit) => (
               <UnitListingRow
                 building={buildingsByID.get(unit.building_id) ?? null}
-                canEdit={canEdit}
-                isUpdatingPublication={publicationUnitID === unit.id}
                 key={unit.id}
                 onEditUnit={onEditUnit}
-                onUpdateUnitPublication={onUpdateUnitPublication}
                 unit={unit}
               />
             ))}
@@ -2048,24 +2034,14 @@ function BuildingUnitListRow({
 
 function UnitListingRow({
   building,
-  canEdit,
-  isUpdatingPublication,
   unit,
-  onEditUnit,
-  onUpdateUnitPublication
+  onEditUnit
 }: {
   building: Building | null;
-  canEdit: boolean;
-  isUpdatingPublication: boolean;
   unit: UnitWithListing;
   onEditUnit: (unit: UnitWithListing) => void;
-  onUpdateUnitPublication: (
-    unit: UnitWithListing,
-    nextStatus: Extract<ListingStatus, "available" | "unavailable">
-  ) => Promise<void> | void;
 }) {
   const listing = unit.listing ?? defaultListing(unit.id);
-  const isListed = isListedUnit(unit);
 
   return (
     <div
@@ -2115,20 +2091,6 @@ function UnitListingRow({
         <span className={`status-pill ${listing.status === "available" ? "active" : "suspended"}`}>
           {listing.status}
         </span>
-      </div>
-      <div className="unit-cell">
-        <button
-          className="mini-action danger-ghost-button"
-          disabled={!canEdit || !isListed || isUpdatingPublication}
-          onClick={(event) => {
-            event.stopPropagation();
-            onUpdateUnitPublication(unit, "unavailable");
-          }}
-          type="button"
-        >
-          <EyeOff size={13} />
-          {isUpdatingPublication ? "Saving" : "Unlist"}
-        </button>
       </div>
     </div>
   );

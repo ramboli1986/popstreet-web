@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { Copy, ExternalLink, Link2, RefreshCcw, X } from "lucide-react";
+import { Copy, ExternalLink, Link2, RefreshCcw, Trash2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { canEditInventory, formatDate, formatMoneyFromCents } from "@/lib/format";
 import type { AccountProfile, Application, ApplicationStatus, Building } from "@/lib/types";
@@ -333,6 +333,57 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
       cashback_paid_at: new Date().toISOString(),
       status: "cashback_paid"
     });
+  }
+
+  /**
+   * Hard delete an application row + its proof screenshot. Used by ops for
+   * test rows, spam, or GDPR-style purges. Cancellation via the user-facing
+   * `cancelled` status is the non-destructive alternative — this one wipes
+   * the row entirely so nothing remains in the audit trail.
+   */
+  async function deleteApplication(application: Application) {
+    if (!canEdit) {
+      setErrorMessage("You don't have permission to delete applications.");
+      return;
+    }
+    const applicantHint =
+      applicants.get(application.user_id)?.display_name ||
+      applicants.get(application.user_id)?.email ||
+      "this applicant";
+    const buildingHint = buildings.get(application.building_id)?.name ?? "Unknown building";
+    const confirmed = window.confirm(
+      `Delete ${applicantHint}'s application for ${buildingHint}?\n\nThis permanently removes the row, its uploaded screenshot, and cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setBusyId(application.id);
+    setErrorMessage(null);
+
+    // Best-effort delete of the proof object. We do this BEFORE deleting the
+    // application row so that if storage fails we don't end up with an
+    // orphaned screenshot. Storage failures are warned but don't block.
+    if (application.submission_proof_url) {
+      const { error: storageError } = await supabase.storage
+        .from(APPLICATION_PROOFS_BUCKET)
+        .remove([application.submission_proof_url]);
+      if (storageError) {
+        console.warn("Failed to delete proof object", storageError);
+      }
+    }
+
+    const { error: deleteError } = await supabase
+      .from("applications")
+      .delete()
+      .eq("id", application.id);
+    setBusyId(null);
+
+    if (deleteError) {
+      setErrorMessage(deleteError.message);
+      return;
+    }
+
+    setSelectedId(null);
+    await load();
   }
 
   function renderDrawerActions(application: Application) {
@@ -668,8 +719,10 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
           applicant={applicants.get(selectedApplication.user_id)}
           application={selectedApplication}
           building={buildings.get(selectedApplication.building_id)}
+          canEdit={canEdit}
           isBusy={busyId === selectedApplication.id}
           onClose={() => setSelectedId(null)}
+          onDelete={() => deleteApplication(selectedApplication)}
           proofURL={
             selectedApplication.submission_proof_url
               ? proofURLs.get(selectedApplication.submission_proof_url) ?? null
@@ -690,7 +743,9 @@ function ApplicationDrawer({
   proofURL,
   actions,
   isBusy,
-  onClose
+  canEdit,
+  onClose,
+  onDelete
 }: {
   application: Application;
   applicant: ApplicantLite | undefined;
@@ -699,7 +754,9 @@ function ApplicationDrawer({
   proofURL: string | null;
   actions: React.ReactNode;
   isBusy: boolean;
+  canEdit: boolean;
   onClose: () => void;
+  onDelete: () => void;
 }) {
   const applicantName =
     applicant?.display_name?.trim() || applicant?.full_name?.trim() || "Applicant";
@@ -923,6 +980,37 @@ function ApplicationDrawer({
                 Saving…
               </div>
             ) : null}
+          </Section>
+
+          <Section title="Danger zone">
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                padding: 12,
+                borderRadius: 12,
+                border: "1px solid rgba(220, 38, 38, 0.25)",
+                background: "rgba(220, 38, 38, 0.05)"
+              }}
+            >
+              <div style={{ display: "grid", gap: 2 }}>
+                <strong style={{ fontSize: 13, color: "var(--ink)" }}>Delete application</strong>
+                <span className="table-subtext">
+                  Hard-deletes the row and the uploaded screenshot. Cannot be undone.
+                </span>
+              </div>
+              <button
+                className="danger-button compact-button"
+                disabled={!canEdit || isBusy}
+                onClick={onDelete}
+                type="button"
+              >
+                <Trash2 size={14} />
+                Delete
+              </button>
+            </div>
           </Section>
         </div>
       </aside>

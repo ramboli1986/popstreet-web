@@ -159,6 +159,7 @@ export type ApplicationStatus =
   | "ops_in_progress"
   | "link_ready"
   | "submitted_to_lo"
+  | "proof_rejected"
   | "under_review"
   | "accepted"
   | "rejected"
@@ -184,6 +185,8 @@ export type Application = {
   cashback_paid_at: string | null;
   submission_proof_url: string | null;
   submission_proof_uploaded_at: string | null;
+  proof_rejection_reason: string | null;
+  proof_rejected_at: string | null;
   created_at: string;
   updated_at: string;
 };

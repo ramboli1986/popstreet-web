@@ -35,6 +35,7 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
   ops_in_progress: "Ops working",
   link_ready: "Link ready",
   submitted_to_lo: "Submitted to LO",
+  proof_rejected: "Proof rejected",
   under_review: "LO reviewing",
   accepted: "Accepted",
   rejected: "Rejected",
@@ -58,6 +59,9 @@ const STATUS_COLORS: Record<ApplicationStatus, string> = {
   ops_in_progress: "#f59e0b",
   link_ready: "#623eeb",
   submitted_to_lo: "#26a3df",
+  // proof_rejected = red/pink "needs attention" — user must re-upload, not a
+  // terminal rejection.
+  proof_rejected: "#dc2626",
   under_review: "#26a3df",
   accepted: "#13a463",
   rejected: "#8a9099",
@@ -76,7 +80,8 @@ const STATUS_NEXT_STEPS: Record<ApplicationStatus, string> = {
   submitted: "Email LO to register applicant",
   ops_in_progress: "Paste broker link from LO reply",
   link_ready: "Wait for user to upload submission proof",
-  submitted_to_lo: "Verify with LO · mark decision",
+  submitted_to_lo: "Verify proof against LO · accept or reject proof",
+  proof_rejected: "Wait for user to re-upload a valid screenshot",
   under_review: "Wait for LO decision",
   accepted: "Pay cashback once lease is signed",
   cashback_pending: "Send cashback · mark paid",
@@ -91,6 +96,7 @@ const ACTIVE_STATUSES: ApplicationStatus[] = [
   "ops_in_progress",
   "link_ready",
   "submitted_to_lo",
+  "proof_rejected",
   "under_review",
   "accepted",
   "cashback_pending"
@@ -104,6 +110,7 @@ const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "ops_in_progress", label: "Ops working" },
   { value: "link_ready", label: "Link ready" },
   { value: "submitted_to_lo", label: "Submitted to LO" },
+  { value: "proof_rejected", label: "Proof rejected" },
   { value: "under_review", label: "LO reviewing" },
   { value: "accepted", label: "Accepted" },
   { value: "cashback_pending", label: "Cashback pending" },
@@ -285,6 +292,31 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
     });
   }
 
+  async function rejectProof(application: Application) {
+    if (!application.submission_proof_url) {
+      setErrorMessage("No proof has been uploaded for this application yet.");
+      return;
+    }
+    const reason = window.prompt(
+      "Why is this proof being rejected? (shown to the user so they can re-upload a better screenshot)",
+      application.proof_rejection_reason ?? ""
+    );
+    if (reason === null) return;
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      setErrorMessage("Rejection reason is required so the user knows what to fix.");
+      return;
+    }
+    // Bounce just the proof — keep submission_proof_url around so ops can
+    // still review what the user originally sent, but flip the status so the
+    // app surfaces a re-upload CTA.
+    await patch(application.id, {
+      status: "proof_rejected",
+      proof_rejection_reason: trimmed,
+      proof_rejected_at: new Date().toISOString()
+    });
+  }
+
   async function setCashbackAndPay(application: Application) {
     const raw = window.prompt(
       "Enter cashback amount in USD (e.g. 1500). Leave blank to cancel.",
@@ -348,8 +380,39 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
             <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "under_review")} type="button">
               Mark under review
             </button>
+            {application.submission_proof_url ? (
+              <button
+                className="danger-ghost-button compact-button"
+                disabled={disabled}
+                onClick={() => rejectProof(application)}
+                type="button"
+              >
+                Reject proof
+              </button>
+            ) : null}
             <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "rejected")} type="button">
               Mark rejected
+            </button>
+          </>
+        );
+      case "proof_rejected":
+        return (
+          <>
+            <button
+              className="ghost-button compact-button"
+              disabled={disabled}
+              onClick={() => rejectProof(application)}
+              type="button"
+            >
+              Update rejection reason
+            </button>
+            <button
+              className="ghost-button compact-button"
+              disabled={disabled}
+              onClick={() => markStatus(application, "cancelled")}
+              type="button"
+            >
+              Cancel application
             </button>
           </>
         );
@@ -742,6 +805,34 @@ function ApplicationDrawer({
           </Section>
 
           <Section title="Submission proof">
+            {application.status === "proof_rejected" ? (
+              <div
+                style={{
+                  border: "1px solid rgba(220, 38, 38, 0.25)",
+                  background: "rgba(220, 38, 38, 0.08)",
+                  borderRadius: 12,
+                  padding: "10px 12px",
+                  marginBottom: 10,
+                  display: "grid",
+                  gap: 6
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "#dc2626" }}>
+                  Rejected
+                  {application.proof_rejected_at ? (
+                    <span style={{ marginLeft: 6, color: "#dc2626", opacity: 0.7, fontWeight: 600 }}>
+                      · {formatDate(application.proof_rejected_at)}
+                    </span>
+                  ) : null}
+                </div>
+                <div style={{ fontSize: 13, color: "var(--ink)", whiteSpace: "pre-wrap" }}>
+                  {application.proof_rejection_reason?.trim() || "No reason given."}
+                </div>
+                <div className="table-subtext">
+                  User will see this reason and can upload a new screenshot.
+                </div>
+              </div>
+            ) : null}
             {proofURL ? (
               <>
                 <div

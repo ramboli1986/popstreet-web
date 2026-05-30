@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronRight, Link2, RefreshCcw } from "lucide-react";
+import Image from "next/image";
+import { ExternalLink, Image as ImageIcon, Link2, RefreshCcw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { canEditInventory, formatDate, formatMoneyFromCents } from "@/lib/format";
 import type { AccountProfile, Application, ApplicationStatus, Building } from "@/lib/types";
@@ -18,7 +19,16 @@ type ApplicantLite = Pick<AccountProfile, "id" | "email" | "full_name"> & {
 
 type BuildingLite = Pick<Building, "id" | "name" | "address" | "full_address" | "city" | "state">;
 
+type UnitLite = {
+  id: string;
+  unit_number: string | null;
+  name: string | null;
+};
+
 type StatusFilter = "all" | "active" | ApplicationStatus;
+
+const APPLICATION_PROOFS_BUCKET = "application-proofs";
+const PROOF_SIGNED_URL_TTL = 60 * 60; // 1 hour
 
 const STATUS_LABELS: Record<ApplicationStatus, string> = {
   submitted: "Submitted",
@@ -34,6 +44,15 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
   no_response: "No response"
 };
 
+/**
+ * Color buckets mirror the iOS app's pill palette family, with finer per-status
+ * hues so ops can still scan their queue:
+ *   amber   = "in flight, our side"      (submitted, ops_in_progress)
+ *   purple  = "user's turn / cashback"   (link_ready, cashback_pending)
+ *   blue    = "waiting on LO"            (submitted_to_lo, under_review)
+ *   green   = "deal won"                 (accepted, cashback_paid)
+ *   gray    = "terminal"                 (rejected, cancelled, no_response)
+ */
 const STATUS_COLORS: Record<ApplicationStatus, string> = {
   submitted: "#f59e0b",
   ops_in_progress: "#f59e0b",
@@ -62,7 +81,6 @@ const FILTER_ORDER: { value: StatusFilter; label: string }[] = [
   { value: "active", label: "Active" },
   { value: "all", label: "All" },
   { value: "submitted", label: "New" },
-  { value: "ops_in_progress", label: "Ops working" },
   { value: "link_ready", label: "Link sent" },
   { value: "submitted_to_lo", label: "Submitted" },
   { value: "under_review", label: "Reviewing" },
@@ -76,10 +94,13 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [applicants, setApplicants] = useState<Map<string, ApplicantLite>>(new Map());
   const [buildings, setBuildings] = useState<Map<string, BuildingLite>>(new Map());
+  const [units, setUnits] = useState<Map<string, UnitLite>>(new Map());
+  const [proofURLs, setProofURLs] = useState<Map<string, string>>(new Map());
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [previewProofURL, setPreviewProofURL] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -100,8 +121,14 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
     const rows = (applicationRows ?? []) as Application[];
     const userIds = Array.from(new Set(rows.map((r) => r.user_id)));
     const buildingIds = Array.from(new Set(rows.map((r) => r.building_id)));
+    const unitIds = Array.from(
+      new Set(rows.map((r) => r.unit_id).filter((id): id is string => Boolean(id)))
+    );
+    const proofPaths = rows
+      .map((r) => r.submission_proof_url)
+      .filter((path): path is string => Boolean(path && path.trim().length > 0));
 
-    const [profileResult, buildingResult] = await Promise.all([
+    const [profileResult, buildingResult, unitResult, signedUrlResult] = await Promise.all([
       userIds.length === 0
         ? Promise.resolve({ data: [], error: null })
         : supabase
@@ -113,7 +140,13 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
         : supabase
             .from("buildings")
             .select("id, name, address, full_address, city, state")
-            .in("id", buildingIds)
+            .in("id", buildingIds),
+      unitIds.length === 0
+        ? Promise.resolve({ data: [], error: null })
+        : supabase.from("units").select("id, unit_number, name").in("id", unitIds),
+      proofPaths.length === 0
+        ? Promise.resolve({ data: [], error: null })
+        : supabase.storage.from(APPLICATION_PROOFS_BUCKET).createSignedUrls(proofPaths, PROOF_SIGNED_URL_TTL)
     ]);
 
     setApplications(rows);
@@ -128,6 +161,25 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
       setErrorMessage(buildingResult.error.message);
     } else {
       setBuildings(new Map((buildingResult.data as BuildingLite[]).map((b) => [b.id, b])));
+    }
+
+    if (unitResult.error) {
+      setErrorMessage(unitResult.error.message);
+    } else {
+      setUnits(new Map((unitResult.data as UnitLite[]).map((u) => [u.id, u])));
+    }
+
+    if (signedUrlResult.error) {
+      // Signed-URL failures are non-fatal — fall back to the plain "uploaded"
+      // indicator without a preview.
+      console.warn("Failed to sign application proof URLs", signedUrlResult.error);
+      setProofURLs(new Map());
+    } else {
+      const entries = (signedUrlResult.data ?? []).flatMap((r): [string, string][] => {
+        if (r.error || !r.signedUrl || !r.path) return [];
+        return [[r.path, r.signedUrl]];
+      });
+      setProofURLs(new Map(entries));
     }
 
     setIsLoading(false);
@@ -216,63 +268,54 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
     const disabled = !canEdit || isBusy;
     switch (application.status) {
       case "submitted":
+      case "ops_in_progress":
+        // No "Mark ops working" anymore — ops goes directly from "submitted"
+        // to pasting the broker link.
         return (
           <>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "ops_in_progress")} type="button">
-              Mark ops working
+            <button className="mini-action" disabled={disabled} onClick={() => pasteLink(application)} type="button">
+              <Link2 size={14} />
+              Paste link
             </button>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "cancelled")} type="button">
+            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "cancelled")} type="button">
               Cancel
             </button>
           </>
         );
-      case "ops_in_progress":
-        return (
-          <>
-            <button className="button compact-button" disabled={disabled} onClick={() => pasteLink(application)} type="button">
-              <Link2 size={14} />
-              Paste broker link
-            </button>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "no_response")} type="button">
-              No response
-            </button>
-          </>
-        );
       case "link_ready":
+        // User now self-reports submission via in-app screenshot upload, which
+        // flips the row to `submitted_to_lo` automatically. Ops only edits the
+        // link here.
         return (
-          <>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => pasteLink(application)} type="button">
-              Update link
-            </button>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "submitted_to_lo", { submitted_to_lo_at: new Date().toISOString() })} type="button">
-              Mark user submitted
-            </button>
-          </>
+          <button className="mini-action" disabled={disabled} onClick={() => pasteLink(application)} type="button">
+            <Link2 size={14} />
+            Update link
+          </button>
         );
       case "submitted_to_lo":
         return (
           <>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "under_review")} type="button">
-              Mark under review
+            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "under_review")} type="button">
+              Under review
             </button>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "accepted", { accepted_at: new Date().toISOString() })} type="button">
-              Mark accepted
+            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "accepted", { accepted_at: new Date().toISOString() })} type="button">
+              Accepted
             </button>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "rejected")} type="button">
-              Mark rejected
+            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "rejected")} type="button">
+              Rejected
             </button>
           </>
         );
       case "under_review":
         return (
           <>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "accepted", { accepted_at: new Date().toISOString() })} type="button">
-              Mark accepted
+            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "accepted", { accepted_at: new Date().toISOString() })} type="button">
+              Accepted
             </button>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "rejected")} type="button">
-              Mark rejected
+            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "rejected")} type="button">
+              Rejected
             </button>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "no_response")} type="button">
+            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "no_response")} type="button">
               No response
             </button>
           </>
@@ -280,17 +323,17 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
       case "accepted":
         return (
           <>
-            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "cashback_pending")} type="button">
+            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "cashback_pending")} type="button">
               Cashback pending
             </button>
-            <button className="button compact-button" disabled={disabled} onClick={() => setCashbackAndPay(application)} type="button">
+            <button className="mini-action" disabled={disabled} onClick={() => setCashbackAndPay(application)} type="button">
               Pay cashback
             </button>
           </>
         );
       case "cashback_pending":
         return (
-          <button className="button compact-button" disabled={disabled} onClick={() => setCashbackAndPay(application)} type="button">
+          <button className="mini-action" disabled={disabled} onClick={() => setCashbackAndPay(application)} type="button">
             Pay cashback
           </button>
         );
@@ -349,96 +392,200 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
           <p>Try changing the filter above or pull again with refresh.</p>
         </div>
       ) : (
-        <div style={{ display: "grid", gap: 12 }}>
-          {filteredApplications.map((application) => {
-            const applicant = applicants.get(application.user_id);
-            const building = buildings.get(application.building_id);
-            const color = STATUS_COLORS[application.status];
-            return (
-              <article
-                key={application.id}
-                style={{
-                  background: "white",
-                  border: "1px solid var(--line)",
-                  borderRadius: 16,
-                  padding: 16,
-                  boxShadow: "var(--shadow)",
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  gap: 16,
-                  alignItems: "start"
-                }}
-              >
-                <div style={{ display: "grid", gap: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        letterSpacing: 0.6,
-                        color,
-                        background: `${color}20`,
-                        padding: "4px 10px",
-                        borderRadius: 999
-                      }}
-                    >
-                      {STATUS_LABELS[application.status]}
-                    </span>
-                    <span style={{ fontSize: 11, color: "var(--muted)" }}>
-                      Created {formatDate(application.created_at)} · Updated {formatDate(application.updated_at)}
-                    </span>
-                  </div>
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>No.</th>
+                <th>Status</th>
+                <th>Building</th>
+                <th>Applicant</th>
+                <th>Unit</th>
+                <th>Proof</th>
+                <th>Link</th>
+                <th>Cashback</th>
+                <th>Updated</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredApplications.map((application, index) => {
+                const applicant = applicants.get(application.user_id);
+                const building = buildings.get(application.building_id);
+                const unit = application.unit_id ? units.get(application.unit_id) : undefined;
+                const color = STATUS_COLORS[application.status];
+                const proofURL = application.submission_proof_url
+                  ? proofURLs.get(application.submission_proof_url) ?? null
+                  : null;
+                const applicantName =
+                  applicant?.display_name?.trim() ||
+                  applicant?.full_name?.trim() ||
+                  "Applicant";
+                const contactBits = [applicant?.email, applicant?.phone].filter(Boolean).join(" · ");
 
-                  <div style={{ fontSize: 16, fontWeight: 700, color: "var(--ink)", fontFamily: "var(--font-display)" }}>
-                    {building?.name ?? "Building missing"}
-                    <span style={{ color: "var(--muted)", fontWeight: 500, marginLeft: 8, fontSize: 13 }}>
-                      {building ? `${building.city}, ${building.state}` : ""}
-                    </span>
-                  </div>
-
-                  <div style={{ fontSize: 13, color: "var(--slate)" }}>
-                    <strong style={{ color: "var(--ink)" }}>
-                      {applicant?.display_name || applicant?.full_name || "Applicant"}
-                    </strong>
-                    {applicant?.oauth_provider ? (
-                      <span style={{ marginLeft: 8, fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                        {applicant.oauth_provider}
+                return (
+                  <tr key={application.id}>
+                    <td className="row-index">{index + 1}</td>
+                    <td>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: 0.6,
+                          color,
+                          background: `${color}20`,
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          whiteSpace: "nowrap"
+                        }}
+                      >
+                        {STATUS_LABELS[application.status]}
                       </span>
-                    ) : null}
-                    {applicant?.email ? <span> · {applicant.email}</span> : null}
-                    {applicant?.phone ? <span> · {applicant.phone}</span> : null}
-                  </div>
-
-                  {application.notes ? (
-                    <div style={{ fontSize: 13, color: "var(--slate)", fontStyle: "italic" }}>
-                      &quot;{application.notes}&quot;
-                    </div>
-                  ) : null}
-
-                  {application.broker_link ? (
-                    <div style={{ fontSize: 12, color: "var(--muted)", display: "flex", alignItems: "center", gap: 6 }}>
-                      <ChevronRight size={12} />
-                      <a href={application.broker_link} rel="noreferrer" style={{ color: "var(--brand)" }} target="_blank">
-                        {application.broker_link}
-                      </a>
-                    </div>
-                  ) : null}
-
-                  {application.cashback_amount_cents ? (
-                    <div style={{ fontSize: 13, color: "var(--brand)", fontWeight: 600 }}>
-                      Cashback: {formatMoneyFromCents(application.cashback_amount_cents)}
-                      {application.cashback_paid_at ? ` · paid ${formatDate(application.cashback_paid_at)}` : null}
-                    </div>
-                  ) : null}
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 180 }}>{renderActions(application)}</div>
-              </article>
-            );
-          })}
+                    </td>
+                    <td>
+                      <span className="table-primary-text">{building?.name ?? "Building missing"}</span>
+                      {building ? (
+                        <div className="table-subtext">
+                          {building.city}, {building.state}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td>
+                      <span className="table-primary-text">{applicantName}</span>
+                      {contactBits ? <div className="table-subtext">{contactBits}</div> : null}
+                      {applicant?.oauth_provider ? (
+                        <div className="table-subtext" style={{ textTransform: "uppercase", letterSpacing: 0.4 }}>
+                          {applicant.oauth_provider}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td>
+                      {unit?.unit_number || unit?.name ? (
+                        <span className="table-primary-text">{unit.unit_number ?? unit.name}</span>
+                      ) : (
+                        <span className="table-subtext">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {application.submission_proof_url ? (
+                        proofURL ? (
+                          <button
+                            className="mini-action"
+                            onClick={() => setPreviewProofURL(proofURL)}
+                            type="button"
+                            title={
+                              application.submission_proof_uploaded_at
+                                ? `Uploaded ${formatDate(application.submission_proof_uploaded_at)}`
+                                : "View screenshot"
+                            }
+                          >
+                            <ImageIcon size={14} />
+                            View
+                          </button>
+                        ) : (
+                          <span className="table-subtext">Uploaded</span>
+                        )
+                      ) : (
+                        <span className="table-subtext">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {application.broker_link ? (
+                        <a
+                          className="table-primary-link"
+                          href={application.broker_link}
+                          onClick={(event) => event.stopPropagation()}
+                          rel="noreferrer"
+                          target="_blank"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 4,
+                            maxWidth: 180,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap"
+                          }}
+                        >
+                          <ExternalLink size={12} />
+                          Open
+                        </a>
+                      ) : (
+                        <span className="table-subtext">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {application.cashback_amount_cents ? (
+                        <>
+                          <span className="table-primary-text">
+                            {formatMoneyFromCents(application.cashback_amount_cents)}
+                          </span>
+                          {application.cashback_paid_at ? (
+                            <div className="table-subtext">paid {formatDate(application.cashback_paid_at)}</div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="table-subtext">—</span>
+                      )}
+                    </td>
+                    <td>{formatDate(application.updated_at)}</td>
+                    <td>
+                      <div className="row-actions">{renderActions(application)}</div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
+
+      {previewProofURL ? (
+        <div
+          onClick={() => setPreviewProofURL(null)}
+          role="presentation"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 15, 23, 0.72)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 1000,
+            padding: 24
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            style={{
+              background: "white",
+              borderRadius: 18,
+              padding: 16,
+              maxWidth: "min(720px, 90vw)",
+              maxHeight: "85vh",
+              overflow: "auto",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.30)"
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <strong style={{ fontSize: 14 }}>Submission screenshot</strong>
+              <button className="mini-action" onClick={() => setPreviewProofURL(null)} type="button">
+                Close
+              </button>
+            </div>
+            <Image
+              alt="Application submission proof"
+              height={1200}
+              src={previewProofURL}
+              style={{ width: "100%", height: "auto", borderRadius: 10, display: "block" }}
+              unoptimized
+              width={800}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

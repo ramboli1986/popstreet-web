@@ -182,6 +182,8 @@ export type Application = {
   accepted_at: string | null;
   cashback_amount_cents: number | null;
   cashback_paid_at: string | null;
+  submission_proof_url: string | null;
+  submission_proof_uploaded_at: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -67,6 +67,25 @@ const STATUS_COLORS: Record<ApplicationStatus, string> = {
   no_response: "#8a9099"
 };
 
+/**
+ * What ops / the system is expected to do next for each status. Surfaced as
+ * subtext under the status pill so anyone scanning the list can see what
+ * action a row is waiting on without opening the detail drawer.
+ */
+const STATUS_NEXT_STEPS: Record<ApplicationStatus, string> = {
+  submitted: "Email LO to register applicant",
+  ops_in_progress: "Paste broker link from LO reply",
+  link_ready: "Wait for user to upload submission proof",
+  submitted_to_lo: "Verify with LO · mark decision",
+  under_review: "Wait for LO decision",
+  accepted: "Pay cashback once lease is signed",
+  cashback_pending: "Send cashback · mark paid",
+  cashback_paid: "Done",
+  rejected: "Closed — no further action",
+  cancelled: "Closed — no further action",
+  no_response: "Closed — no further action"
+};
+
 const ACTIVE_STATUSES: ApplicationStatus[] = [
   "submitted",
   "ops_in_progress",
@@ -489,6 +508,12 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
                     <td className="row-index">{index + 1}</td>
                     <td>
                       <StatusPill status={application.status} />
+                      <div
+                        className="table-subtext"
+                        style={{ marginTop: 4, maxWidth: 220, lineHeight: 1.35 }}
+                      >
+                        → {STATUS_NEXT_STEPS[application.status]}
+                      </div>
                     </td>
                     <td>
                       <span className="table-primary-text">{building?.name ?? "Building missing"}</span>
@@ -515,11 +540,41 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
                       )}
                     </td>
                     <td>
-                      {application.submission_proof_url ? (
-                        <span style={{ color: "#13a463", fontWeight: 600, fontSize: 12 }}>Uploaded</span>
-                      ) : (
-                        <span className="table-subtext">—</span>
-                      )}
+                      {(() => {
+                        const proofPath = application.submission_proof_url;
+                        if (!proofPath) {
+                          return <span className="table-subtext">—</span>;
+                        }
+                        const thumbURL = proofURLs.get(proofPath);
+                        if (!thumbURL) {
+                          return (
+                            <span style={{ color: "#13a463", fontWeight: 600, fontSize: 12 }}>
+                              Uploaded
+                            </span>
+                          );
+                        }
+                        return (
+                          <div
+                            style={{
+                              width: 64,
+                              height: 64,
+                              borderRadius: 10,
+                              overflow: "hidden",
+                              border: "1px solid var(--line)",
+                              background: "var(--surface-muted)"
+                            }}
+                          >
+                            <Image
+                              alt="Submission proof preview"
+                              height={128}
+                              src={thumbURL}
+                              style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                              unoptimized
+                              width={128}
+                            />
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td>
                       {application.cashback_amount_cents ? (

@@ -548,7 +548,10 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const buildingImagesForDraft = useMemo(
     () =>
       draft
-        ? buildingImages.filter((image) => image.building_id === draft.id).sort(compareMediaImageRows)
+        ? buildingImagesWithCoverFallback(
+            draft,
+            buildingImages.filter((image) => image.building_id === draft.id)
+          ).sort(compareMediaImageRows)
         : [],
     [buildingImages, draft]
   );
@@ -596,6 +599,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       return;
     }
 
+    updateDraft("cover_image_url", coverImageURLFromImages(nextImages));
     setBuildingImages((current) => [
       ...current.filter((image) => image.building_id !== draft.id),
       ...nextImages
@@ -694,7 +698,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setError(null);
     setMessage(null);
 
-    const payload = buildingPayload(draft);
+    const imagesForDraft = buildingImagesWithCoverFallback(
+      draft,
+      buildingImages.filter((image) => image.building_id === draft.id)
+    );
+    const payload = buildingPayload(draft, imagesForDraft);
     const isNew = draft.id.startsWith("new-");
     const result = isNew
       ? await supabase
@@ -716,7 +724,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     }
 
     const savedBuilding = result.data as Building;
-    const imagesForDraft = buildingImages.filter((image) => image.building_id === draft.id);
     const servicesForDraft = buildingServices.filter((service) => service.building_id === draft.id);
     const transitLinesForDraft = buildingTransitLines.filter((line) => line.building_id === draft.id);
     let syncedImages: BuildingImage[] = [];
@@ -1011,6 +1018,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             services={buildingServicesForDraft}
             transitLines={buildingTransitLinesForDraft}
             onClose={() => setIsBuildingEditorOpen(false)}
+            onDelete={deleteBuilding}
             onImagesChange={updateBuildingImageDrafts}
             onSave={saveBuilding}
             onServicesChange={updateBuildingServiceDrafts}
@@ -1162,7 +1170,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               filteredCount={filteredBuildings.length}
               metrics={buildingMetrics}
               selectedBuilding={selectedBuilding}
-              onDelete={deleteBuilding}
               onLoadMore={(event) =>
                 handleScrollLoadMore(
                   event,
@@ -1191,6 +1198,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           services={buildingServicesForDraft}
           transitLines={buildingTransitLinesForDraft}
           onClose={() => setIsBuildingEditorOpen(false)}
+          onDelete={deleteBuilding}
           onImagesChange={updateBuildingImageDrafts}
           onSave={saveBuilding}
           onServicesChange={updateBuildingServiceDrafts}
@@ -1235,7 +1243,6 @@ function BuildingTable({
   filteredCount,
   metrics,
   selectedBuilding,
-  onDelete,
   onLoadMore,
   onOpen,
   onOpenUnits,
@@ -1245,7 +1252,6 @@ function BuildingTable({
   filteredCount: number;
   metrics: Map<string, BuildingMetric>;
   selectedBuilding: Building | null;
-  onDelete: (building: Building) => void;
   onLoadMore: (event: UIEvent<HTMLDivElement>) => void;
   onOpen: (building: Building) => void;
   onOpenUnits: (building: Building) => void;
@@ -1336,19 +1342,6 @@ function BuildingTable({
                     >
                       <Pencil size={14} />
                       Edit building
-                    </button>
-                    <button
-                      className="icon-button danger"
-                      disabled={!canEdit}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onDelete(building);
-                      }}
-                      onKeyDown={(event) => event.stopPropagation()}
-                      title="Delete"
-                      type="button"
-                    >
-                      <Trash2 size={15} />
                     </button>
                   </div>
                 </td>
@@ -1524,13 +1517,11 @@ function BuildingEditor({
 
       <ImageCollectionEditor
         canEdit={canEdit}
-        coverImageURL={draft.cover_image_url ?? ""}
         createImage={() => createBuildingImageDraft(draft.id, images.length)}
         helpText="Building images are mixed into the detail gallery after unit photos. Use specific types for exterior, lobby, amenity, and neighborhood shots."
         images={images}
         kinds={buildingImageKinds}
         onChange={onImagesChange}
-        onCoverImageURLChange={(value) => updateDraft("cover_image_url", value || null)}
         title="Building media"
       />
 
@@ -1724,6 +1715,7 @@ function BuildingEditorDialog({
   onTransitLinesChange,
   updateDraft,
   onClose,
+  onDelete,
   onSave
 }: {
   buildingImages: BuildingImage[];
@@ -1739,6 +1731,7 @@ function BuildingEditorDialog({
   onTransitLinesChange: (lines: BuildingTransitLine[]) => void;
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
   onClose: () => void;
+  onDelete: (building: Building) => void;
   onSave: () => void;
 }) {
   return (
@@ -1750,6 +1743,15 @@ function BuildingEditorDialog({
             <h3>{draft.id.startsWith("new-") ? "New building" : draft.name}</h3>
           </div>
           <div className="drawer-header-actions">
+            <button
+              className="danger-button compact-button"
+              disabled={!canEdit || isSaving || draft.id.startsWith("new-")}
+              onClick={() => onDelete(draft)}
+              type="button"
+            >
+              <Trash2 size={15} />
+              Delete building
+            </button>
             <button className="button compact-button" disabled={!canEdit || isSaving} onClick={onSave} type="button">
               <Save size={15} />
               {isSaving ? "Saving..." : "Save"}
@@ -2493,23 +2495,19 @@ type ImageRowBase = {
 
 function ImageCollectionEditor<TImage extends ImageRowBase>({
   canEdit,
-  coverImageURL,
   createImage,
   helpText,
   images,
   kinds,
   onChange,
-  onCoverImageURLChange,
   title
 }: {
   canEdit: boolean;
-  coverImageURL?: string;
   createImage: () => TImage;
   helpText: string;
   images: TImage[];
   kinds: readonly string[];
   onChange: (images: TImage[]) => void;
-  onCoverImageURLChange?: (value: string) => void;
   title: string;
 }) {
   const sortedImages = useMemo(() => images.slice().sort(compareMediaImageRows), [images]);
@@ -2557,15 +2555,6 @@ function ImageCollectionEditor<TImage extends ImageRowBase>({
           Add image
         </button>
       </div>
-
-      {onCoverImageURLChange ? (
-        <InputField
-          disabled={!canEdit}
-          label="Cover image URL"
-          value={coverImageURL ?? ""}
-          onChange={onCoverImageURLChange}
-        />
-      ) : null}
 
       {sortedImages.length === 0 ? (
         <div className="media-empty">No images yet.</div>
@@ -2863,6 +2852,18 @@ function createBuildingImageDraft(buildingID: string, index: number): BuildingIm
   };
 }
 
+function createBuildingCoverImageDraft(buildingID: string, url: string): BuildingImage {
+  return {
+    id: `new-building-cover-${buildingID}`,
+    building_id: buildingID,
+    kind: "cover",
+    url,
+    alt_text: null,
+    sort_order: -10,
+    created_at: ""
+  };
+}
+
 function createBuildingServiceDraft(buildingID: string, option: BuildingServiceOption, index: number): BuildingService {
   const now = new Date().toISOString();
 
@@ -3027,7 +3028,7 @@ function formatMonthValue(value: number) {
   return Number.isInteger(value) ? `${value}` : value.toFixed(1).replace(/\.0$/, "");
 }
 
-function buildingPayload(building: Building) {
+function buildingPayload(building: Building, images: BuildingImage[]) {
   return {
     slug: building.slug || slugify(building.name),
     name: building.name,
@@ -3042,7 +3043,7 @@ function buildingPayload(building: Building) {
     score: building.score,
     summary: building.summary,
     description_labels: building.description_labels,
-    cover_image_url: building.cover_image_url,
+    cover_image_url: coverImageURLFromImages(images),
     is_active: building.is_active,
     year_built: building.year_built,
     total_floors: building.total_floors,
@@ -3245,6 +3246,32 @@ function normalizedPersistableImages<TImage extends ImageRowBase>(images: TImage
       alt_text: normalizeOptionalText(image.alt_text)
     }))
     .filter((image) => image.url.length > 0);
+}
+
+function buildingImagesWithCoverFallback(building: Building, images: BuildingImage[]) {
+  const coverImageURL = normalizeOptionalText(building.cover_image_url);
+
+  if (!coverImageURL) {
+    return images;
+  }
+
+  const hasPersistableCover = images.some((image) => image.kind === "cover" && image.url.trim().length > 0);
+
+  if (hasPersistableCover) {
+    return images;
+  }
+
+  return [createBuildingCoverImageDraft(building.id, coverImageURL), ...images];
+}
+
+function coverImageURLFromImages(images: ImageRowBase[]) {
+  return normalizeOptionalText(
+    images
+      .slice()
+      .sort(compareMediaImageRows)
+      .find((image) => image.kind === "cover" && image.url.trim().length > 0)
+      ?.url ?? null
+  );
 }
 
 function normalizeBuildingServices(services: BuildingService[]) {

@@ -202,6 +202,7 @@ export type Unit = {
   sqft: number | null;
   floor: number | null;
   description_labels: string[];
+  application_url: string | null;
   created_at: string;
   updated_at: string;
 };

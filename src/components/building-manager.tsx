@@ -2178,8 +2178,15 @@ function UnitEditorDialog({
       bathroom_count: nextDraft.bathroom_count,
       sqft: nextDraft.sqft,
       floor: nextDraft.floor,
-      description_labels: nextDraft.description_labels
+      description_labels: nextDraft.description_labels,
+      application_url: normalizeApplicationURL(nextDraft.application_url)
     };
+
+    if (!unitPayload.application_url) {
+      setError("Unit application URL is required.");
+      setIsSaving(false);
+      return;
+    }
 
     const unitResult = isNew
       ? await supabase.from("units").insert(unitPayload).select("*").single()
@@ -2193,7 +2200,8 @@ function UnitEditorDialog({
             bathroom_count: unitPayload.bathroom_count,
             sqft: unitPayload.sqft,
             floor: unitPayload.floor,
-            description_labels: unitPayload.description_labels
+            description_labels: unitPayload.description_labels,
+            application_url: unitPayload.application_url
           })
           .eq("id", nextDraft.id)
           .select("*")
@@ -2354,6 +2362,16 @@ function UnitEditorDialog({
                 label="Display name"
                 value={draft.name}
                 onChange={(value) => setDraft((current) => ({ ...current, name: value }))}
+              />
+              <InputField
+                className="field full"
+                disabled={!canEdit}
+                label="Unit application URL"
+                placeholder="https://leasing-office.com/apply/unit"
+                required
+                type="url"
+                value={draft.application_url ?? ""}
+                onChange={(value) => setDraft((current) => ({ ...current, application_url: value }))}
               />
               <NumberField
                 disabled={!canEdit}
@@ -2668,18 +2686,31 @@ function InputField({
   value,
   onChange,
   disabled,
-  type = "text"
+  type = "text",
+  className = "field",
+  placeholder,
+  required = false
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
   type?: string;
+  className?: string;
+  placeholder?: string;
+  required?: boolean;
 }) {
   return (
-    <label className="field">
+    <label className={className}>
       <span>{label}</span>
-      <input disabled={disabled} type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      <input
+        disabled={disabled}
+        placeholder={placeholder}
+        required={required}
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
     </label>
   );
 }
@@ -2931,6 +2962,7 @@ function createUnitDraft(building: Building): UnitWithListing {
     sqft: null,
     floor: null,
     description_labels: [],
+    application_url: null,
     created_at: now,
     updated_at: now,
     listing: defaultListing(draftID)
@@ -3344,6 +3376,22 @@ function normalizeOptionalText(value: string | null) {
   const trimmedValue = value?.trim() ?? "";
 
   return trimmedValue.length > 0 ? trimmedValue : null;
+}
+
+function normalizeApplicationURL(value: string | null) {
+  const trimmedValue = normalizeOptionalText(value);
+
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const candidate = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmedValue) ? trimmedValue : `https://${trimmedValue}`;
+
+  try {
+    return new URL(candidate).toString();
+  } catch {
+    return null;
+  }
 }
 
 function normalizeChoiceValue(value: string) {

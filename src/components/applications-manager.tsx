@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { ExternalLink, Image as ImageIcon, Link2, RefreshCcw } from "lucide-react";
+import { Copy, ExternalLink, Link2, RefreshCcw, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { canEditInventory, formatDate, formatMoneyFromCents } from "@/lib/format";
 import type { AccountProfile, Application, ApplicationStatus, Building } from "@/lib/types";
@@ -77,16 +77,44 @@ const ACTIVE_STATUSES: ApplicationStatus[] = [
   "cashback_pending"
 ];
 
-const FILTER_ORDER: { value: StatusFilter; label: string }[] = [
-  { value: "active", label: "Active" },
-  { value: "all", label: "All" },
-  { value: "submitted", label: "New" },
-  { value: "link_ready", label: "Link sent" },
-  { value: "submitted_to_lo", label: "Submitted" },
-  { value: "under_review", label: "Reviewing" },
+/** Filter dropdown: meta options first, then every individual status. */
+const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
+  { value: "active", label: "Active (open)" },
+  { value: "all", label: "All statuses" },
+  { value: "submitted", label: "Submitted" },
+  { value: "ops_in_progress", label: "Ops working" },
+  { value: "link_ready", label: "Link ready" },
+  { value: "submitted_to_lo", label: "Submitted to LO" },
+  { value: "under_review", label: "LO reviewing" },
   { value: "accepted", label: "Accepted" },
-  { value: "cashback_pending", label: "Cashback pending" }
+  { value: "cashback_pending", label: "Cashback pending" },
+  { value: "cashback_paid", label: "Cashback paid" },
+  { value: "rejected", label: "Rejected" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "no_response", label: "No response" }
 ];
+
+function StatusPill({ status }: { status: ApplicationStatus }) {
+  const color = STATUS_COLORS[status];
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        fontSize: 11,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: 0.6,
+        color,
+        background: `${color}20`,
+        padding: "4px 10px",
+        borderRadius: 999,
+        whiteSpace: "nowrap"
+      }}
+    >
+      {STATUS_LABELS[status]}
+    </span>
+  );
+}
 
 export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
   const canEdit = canEditInventory(profile?.role, profile?.account_kind, profile?.status);
@@ -100,7 +128,7 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [previewProofURL, setPreviewProofURL] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -170,8 +198,6 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
     }
 
     if (signedUrlResult.error) {
-      // Signed-URL failures are non-fatal — fall back to the plain "uploaded"
-      // indicator without a preview.
       console.warn("Failed to sign application proof URLs", signedUrlResult.error);
       setProofURLs(new Map());
     } else {
@@ -197,15 +223,10 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
     return applications.filter((a) => a.status === statusFilter);
   }, [applications, statusFilter]);
 
-  const statusCounts = useMemo(() => {
-    const map = new Map<StatusFilter, number>();
-    map.set("all", applications.length);
-    map.set("active", applications.filter((a) => ACTIVE_STATUSES.includes(a.status)).length);
-    applications.forEach((a) => {
-      map.set(a.status, (map.get(a.status) ?? 0) + 1);
-    });
-    return map;
-  }, [applications]);
+  const selectedApplication = useMemo(
+    () => (selectedId ? applications.find((a) => a.id === selectedId) ?? null : null),
+    [selectedId, applications]
+  );
 
   async function patch(applicationId: string, patchBody: Partial<Application>) {
     if (!canEdit) {
@@ -263,82 +284,89 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
     });
   }
 
-  function renderActions(application: Application) {
+  function renderDrawerActions(application: Application) {
     const isBusy = busyId === application.id;
     const disabled = !canEdit || isBusy;
+
+    /**
+     * Per-status workflow actions. "Mark ops working" was removed — ops
+     * goes directly from `submitted` to pasting the broker link. The
+     * "Mark user submitted" affordance also no longer lives here because
+     * users flip that themselves via in-app screenshot upload.
+     */
     switch (application.status) {
       case "submitted":
       case "ops_in_progress":
-        // No "Mark ops working" anymore — ops goes directly from "submitted"
-        // to pasting the broker link.
         return (
           <>
-            <button className="mini-action" disabled={disabled} onClick={() => pasteLink(application)} type="button">
+            <button className="button compact-button" disabled={disabled} onClick={() => pasteLink(application)} type="button">
               <Link2 size={14} />
-              Paste link
+              Paste broker link
             </button>
-            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "cancelled")} type="button">
-              Cancel
+            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "cancelled")} type="button">
+              Cancel application
             </button>
           </>
         );
       case "link_ready":
-        // User now self-reports submission via in-app screenshot upload, which
-        // flips the row to `submitted_to_lo` automatically. Ops only edits the
-        // link here.
         return (
-          <button className="mini-action" disabled={disabled} onClick={() => pasteLink(application)} type="button">
-            <Link2 size={14} />
-            Update link
-          </button>
+          <>
+            <button className="ghost-button compact-button" disabled={disabled} onClick={() => pasteLink(application)} type="button">
+              <Link2 size={14} />
+              Update broker link
+            </button>
+            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "no_response")} type="button">
+              Mark no response
+            </button>
+          </>
         );
       case "submitted_to_lo":
         return (
           <>
-            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "under_review")} type="button">
-              Under review
+            <button className="button compact-button" disabled={disabled} onClick={() => markStatus(application, "accepted", { accepted_at: new Date().toISOString() })} type="button">
+              Mark accepted
             </button>
-            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "accepted", { accepted_at: new Date().toISOString() })} type="button">
-              Accepted
+            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "under_review")} type="button">
+              Mark under review
             </button>
-            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "rejected")} type="button">
-              Rejected
+            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "rejected")} type="button">
+              Mark rejected
             </button>
           </>
         );
       case "under_review":
         return (
           <>
-            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "accepted", { accepted_at: new Date().toISOString() })} type="button">
-              Accepted
+            <button className="button compact-button" disabled={disabled} onClick={() => markStatus(application, "accepted", { accepted_at: new Date().toISOString() })} type="button">
+              Mark accepted
             </button>
-            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "rejected")} type="button">
-              Rejected
+            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "rejected")} type="button">
+              Mark rejected
             </button>
-            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "no_response")} type="button">
-              No response
+            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "no_response")} type="button">
+              Mark no response
             </button>
           </>
         );
       case "accepted":
         return (
           <>
-            <button className="mini-action" disabled={disabled} onClick={() => markStatus(application, "cashback_pending")} type="button">
-              Cashback pending
-            </button>
-            <button className="mini-action" disabled={disabled} onClick={() => setCashbackAndPay(application)} type="button">
+            <button className="button compact-button" disabled={disabled} onClick={() => setCashbackAndPay(application)} type="button">
               Pay cashback
+            </button>
+            <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "cashback_pending")} type="button">
+              Mark cashback pending
             </button>
           </>
         );
       case "cashback_pending":
         return (
-          <button className="mini-action" disabled={disabled} onClick={() => setCashbackAndPay(application)} type="button">
+          <button className="button compact-button" disabled={disabled} onClick={() => setCashbackAndPay(application)} type="button">
             Pay cashback
           </button>
         );
       default:
-        return null;
+        return <span className="table-subtext">No actions available for this status.</span>;
     }
   }
 
@@ -348,7 +376,7 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
         <div>
           <div className="eyebrow">Applications</div>
           <h1>Broker pipeline</h1>
-          <p>One row per user × building. Status moves manually as ops emails the leasing office and gets responses back.</p>
+          <p>One row per user × building. Click any row to view details and move status.</p>
         </div>
         <div className="page-actions">
           <button className="ghost-button" onClick={load} type="button" disabled={isLoading}>
@@ -361,27 +389,54 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
       {errorMessage ? <div className="message error compact-message">{errorMessage}</div> : null}
       {!canEdit ? <div className="message compact-message">Read-only — editor role or higher can change statuses.</div> : null}
 
-      <div className="filter-row" style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "14px 0" }}>
-        {FILTER_ORDER.map((option) => {
-          const count = statusCounts.get(option.value) ?? 0;
-          const active = option.value === statusFilter;
-          return (
-            <button
-              key={option.value}
-              className={`ghost-button compact-button ${active ? "active" : ""}`}
-              onClick={() => setStatusFilter(option.value)}
-              type="button"
-              style={
-                active
-                  ? { background: "var(--brand-soft)", borderColor: "var(--brand)", color: "var(--brand)" }
-                  : undefined
-              }
-            >
-              {option.label}
-              <span style={{ marginLeft: 6, opacity: 0.6 }}>{count}</span>
-            </button>
-          );
-        })}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 12,
+          margin: "14px 0"
+        }}
+      >
+        <label
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 12,
+            fontWeight: 700,
+            letterSpacing: 0.5,
+            textTransform: "uppercase",
+            color: "var(--muted)"
+          }}
+        >
+          Status
+          <select
+            onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid var(--line)",
+              background: "white",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--ink)",
+              textTransform: "none",
+              letterSpacing: 0,
+              minWidth: 200
+            }}
+            value={statusFilter}
+          >
+            {STATUS_FILTER_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span style={{ fontSize: 12, color: "var(--muted)" }}>
+          {filteredApplications.length} / {applications.length} shown
+        </span>
       </div>
 
       {isLoading ? (
@@ -389,7 +444,7 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
       ) : filteredApplications.length === 0 ? (
         <div className="empty-state">
           <strong>No applications match this filter.</strong>
-          <p>Try changing the filter above or pull again with refresh.</p>
+          <p>Try changing the status filter or pull again with refresh.</p>
         </div>
       ) : (
         <div className="admin-table-wrap">
@@ -402,10 +457,8 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
                 <th>Applicant</th>
                 <th>Unit</th>
                 <th>Proof</th>
-                <th>Link</th>
                 <th>Cashback</th>
                 <th>Updated</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -413,36 +466,29 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
                 const applicant = applicants.get(application.user_id);
                 const building = buildings.get(application.building_id);
                 const unit = application.unit_id ? units.get(application.unit_id) : undefined;
-                const color = STATUS_COLORS[application.status];
-                const proofURL = application.submission_proof_url
-                  ? proofURLs.get(application.submission_proof_url) ?? null
-                  : null;
                 const applicantName =
                   applicant?.display_name?.trim() ||
                   applicant?.full_name?.trim() ||
                   "Applicant";
                 const contactBits = [applicant?.email, applicant?.phone].filter(Boolean).join(" · ");
+                const isSelected = selectedId === application.id;
 
                 return (
-                  <tr key={application.id}>
+                  <tr
+                    className={`clickable-row ${isSelected ? "selected" : ""}`}
+                    key={application.id}
+                    onClick={() => setSelectedId(application.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedId(application.id);
+                      }
+                    }}
+                    tabIndex={0}
+                  >
                     <td className="row-index">{index + 1}</td>
                     <td>
-                      <span
-                        style={{
-                          display: "inline-block",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          textTransform: "uppercase",
-                          letterSpacing: 0.6,
-                          color,
-                          background: `${color}20`,
-                          padding: "4px 10px",
-                          borderRadius: 999,
-                          whiteSpace: "nowrap"
-                        }}
-                      >
-                        {STATUS_LABELS[application.status]}
-                      </span>
+                      <StatusPill status={application.status} />
                     </td>
                     <td>
                       <span className="table-primary-text">{building?.name ?? "Building missing"}</span>
@@ -470,48 +516,7 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
                     </td>
                     <td>
                       {application.submission_proof_url ? (
-                        proofURL ? (
-                          <button
-                            className="mini-action"
-                            onClick={() => setPreviewProofURL(proofURL)}
-                            type="button"
-                            title={
-                              application.submission_proof_uploaded_at
-                                ? `Uploaded ${formatDate(application.submission_proof_uploaded_at)}`
-                                : "View screenshot"
-                            }
-                          >
-                            <ImageIcon size={14} />
-                            View
-                          </button>
-                        ) : (
-                          <span className="table-subtext">Uploaded</span>
-                        )
-                      ) : (
-                        <span className="table-subtext">—</span>
-                      )}
-                    </td>
-                    <td>
-                      {application.broker_link ? (
-                        <a
-                          className="table-primary-link"
-                          href={application.broker_link}
-                          onClick={(event) => event.stopPropagation()}
-                          rel="noreferrer"
-                          target="_blank"
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 4,
-                            maxWidth: 180,
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap"
-                          }}
-                        >
-                          <ExternalLink size={12} />
-                          Open
-                        </a>
+                        <span style={{ color: "#13a463", fontWeight: 600, fontSize: 12 }}>Uploaded</span>
                       ) : (
                         <span className="table-subtext">—</span>
                       )}
@@ -531,9 +536,6 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
                       )}
                     </td>
                     <td>{formatDate(application.updated_at)}</td>
-                    <td>
-                      <div className="row-actions">{renderActions(application)}</div>
-                    </td>
                   </tr>
                 );
               })}
@@ -542,50 +544,287 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
         </div>
       )}
 
-      {previewProofURL ? (
-        <div
-          onClick={() => setPreviewProofURL(null)}
-          role="presentation"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15, 15, 23, 0.72)",
-            display: "grid",
-            placeItems: "center",
-            zIndex: 1000,
-            padding: 24
-          }}
-        >
-          <div
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            style={{
-              background: "white",
-              borderRadius: 18,
-              padding: 16,
-              maxWidth: "min(720px, 90vw)",
-              maxHeight: "85vh",
-              overflow: "auto",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.30)"
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <strong style={{ fontSize: 14 }}>Submission screenshot</strong>
-              <button className="mini-action" onClick={() => setPreviewProofURL(null)} type="button">
-                Close
-              </button>
-            </div>
-            <Image
-              alt="Application submission proof"
-              height={1200}
-              src={previewProofURL}
-              style={{ width: "100%", height: "auto", borderRadius: 10, display: "block" }}
-              unoptimized
-              width={800}
-            />
-          </div>
-        </div>
+      {selectedApplication ? (
+        <ApplicationDrawer
+          actions={renderDrawerActions(selectedApplication)}
+          applicant={applicants.get(selectedApplication.user_id)}
+          application={selectedApplication}
+          building={buildings.get(selectedApplication.building_id)}
+          isBusy={busyId === selectedApplication.id}
+          onClose={() => setSelectedId(null)}
+          proofURL={
+            selectedApplication.submission_proof_url
+              ? proofURLs.get(selectedApplication.submission_proof_url) ?? null
+              : null
+          }
+          unit={selectedApplication.unit_id ? units.get(selectedApplication.unit_id) : undefined}
+        />
       ) : null}
+    </div>
+  );
+}
+
+function ApplicationDrawer({
+  application,
+  applicant,
+  building,
+  unit,
+  proofURL,
+  actions,
+  isBusy,
+  onClose
+}: {
+  application: Application;
+  applicant: ApplicantLite | undefined;
+  building: BuildingLite | undefined;
+  unit: UnitLite | undefined;
+  proofURL: string | null;
+  actions: React.ReactNode;
+  isBusy: boolean;
+  onClose: () => void;
+}) {
+  const applicantName =
+    applicant?.display_name?.trim() || applicant?.full_name?.trim() || "Applicant";
+
+  return (
+    <div className="drawer-backdrop" onMouseDown={onClose} role="presentation">
+      <aside
+        aria-modal="true"
+        className="side-drawer"
+        onMouseDown={(event) => event.stopPropagation()}
+        role="dialog"
+      >
+        <header className="drawer-header">
+          <div>
+            <div className="eyebrow">Application</div>
+            <h3>{building?.name ?? "Building missing"}</h3>
+            <div className="drawer-header-subtitle">
+              {applicantName}
+              {applicant?.email ? <> · {applicant.email}</> : null}
+            </div>
+          </div>
+          <div className="drawer-header-actions">
+            <StatusPill status={application.status} />
+            <button className="icon-button" onClick={onClose} title="Close" type="button">
+              <X size={16} />
+            </button>
+          </div>
+        </header>
+
+        <div className="drawer-body" style={{ display: "grid", gap: 18 }}>
+          <Section title="Applicant">
+            <KV label="Name" value={applicantName} />
+            <KV label="Email" value={applicant?.email || "—"} />
+            <KV label="Phone" value={applicant?.phone || "—"} />
+            <KV label="Signed in via" value={applicant?.oauth_provider?.toUpperCase() || "—"} />
+            <KV label="User ID" value={application.user_id} mono />
+          </Section>
+
+          <Section title="Listing">
+            <KV label="Building" value={building?.name || "—"} />
+            <KV
+              label="Address"
+              value={
+                building
+                  ? building.full_address || `${building.address ?? ""}${building.city ? `, ${building.city}` : ""}${building.state ? `, ${building.state}` : ""}`
+                  : "—"
+              }
+            />
+            <KV label="Unit" value={unit?.unit_number || unit?.name || "—"} />
+            <KV
+              label="App fee"
+              value={application.fee_cents ? formatMoneyFromCents(application.fee_cents) : "—"}
+            />
+          </Section>
+
+          <Section title="Broker link">
+            {application.broker_link ? (
+              <>
+                <div
+                  style={{
+                    fontSize: 12,
+                    background: "var(--brand-soft)",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    wordBreak: "break-all",
+                    color: "var(--ink)"
+                  }}
+                >
+                  {application.broker_link}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <a
+                    className="mini-action"
+                    href={application.broker_link}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    <ExternalLink size={14} />
+                    Open
+                  </a>
+                  <button
+                    className="mini-action"
+                    onClick={() => {
+                      if (application.broker_link) {
+                        void navigator.clipboard.writeText(application.broker_link);
+                      }
+                    }}
+                    type="button"
+                  >
+                    <Copy size={14} />
+                    Copy
+                  </button>
+                </div>
+                {application.broker_link_sent_at ? (
+                  <div className="table-subtext" style={{ marginTop: 6 }}>
+                    Sent to user {formatDate(application.broker_link_sent_at)}
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <span className="table-subtext">No broker link yet. Paste one from the LO reply email below.</span>
+            )}
+          </Section>
+
+          <Section title="Submission proof">
+            {proofURL ? (
+              <>
+                <div
+                  style={{
+                    border: "1px solid var(--line)",
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    background: "var(--surface-muted)"
+                  }}
+                >
+                  <Image
+                    alt="Application submission proof"
+                    height={1200}
+                    src={proofURL}
+                    style={{ width: "100%", height: "auto", display: "block" }}
+                    unoptimized
+                    width={800}
+                  />
+                </div>
+                {application.submission_proof_uploaded_at ? (
+                  <div className="table-subtext" style={{ marginTop: 6 }}>
+                    Uploaded {formatDate(application.submission_proof_uploaded_at)}
+                  </div>
+                ) : null}
+              </>
+            ) : application.submission_proof_url ? (
+              <span className="table-subtext">Uploaded — preview unavailable.</span>
+            ) : (
+              <span className="table-subtext">
+                User hasn&apos;t uploaded a confirmation screenshot yet.
+              </span>
+            )}
+          </Section>
+
+          <Section title="Cashback">
+            <KV
+              label="Amount"
+              value={
+                application.cashback_amount_cents
+                  ? formatMoneyFromCents(application.cashback_amount_cents)
+                  : "—"
+              }
+            />
+            <KV
+              label="Paid at"
+              value={application.cashback_paid_at ? formatDate(application.cashback_paid_at) : "—"}
+            />
+          </Section>
+
+          <Section title="Timeline">
+            <KV label="Created" value={formatDate(application.created_at)} />
+            <KV label="Updated" value={formatDate(application.updated_at)} />
+            <KV
+              label="Broker link sent"
+              value={application.broker_link_sent_at ? formatDate(application.broker_link_sent_at) : "—"}
+            />
+            <KV
+              label="Submitted to LO"
+              value={application.submitted_to_lo_at ? formatDate(application.submitted_to_lo_at) : "—"}
+            />
+            <KV
+              label="Accepted"
+              value={application.accepted_at ? formatDate(application.accepted_at) : "—"}
+            />
+          </Section>
+
+          {application.notes ? (
+            <Section title="Notes">
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "var(--ink)",
+                  background: "var(--surface-muted)",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  whiteSpace: "pre-wrap"
+                }}
+              >
+                {application.notes}
+              </div>
+            </Section>
+          ) : null}
+
+          <Section title="Actions">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>{actions}</div>
+            {isBusy ? (
+              <div className="table-subtext" style={{ marginTop: 6 }}>
+                Saving…
+              </div>
+            ) : null}
+          </Section>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section style={{ display: "grid", gap: 8 }}>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 800,
+          letterSpacing: 0.7,
+          textTransform: "uppercase",
+          color: "var(--muted)"
+        }}
+      >
+        {title}
+      </div>
+      <div style={{ display: "grid", gap: 6 }}>{children}</div>
+    </section>
+  );
+}
+
+function KV({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "120px 1fr",
+        gap: 12,
+        alignItems: "baseline",
+        fontSize: 13
+      }}
+    >
+      <span className="table-subtext">{label}</span>
+      <span
+        style={{
+          color: "var(--ink)",
+          fontFamily: mono ? "var(--font-mono, ui-monospace, SFMono-Regular)" : undefined,
+          fontSize: mono ? 12 : 13,
+          wordBreak: "break-all"
+        }}
+      >
+        {value}
+      </span>
     </div>
   );
 }

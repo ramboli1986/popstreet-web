@@ -990,7 +990,18 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
           {selectedBuilding ? (
             <aside className="map-selection-card">
-              <div>
+              <div className="map-selection-avatar">
+                {selectedBuilding.cover_image_url ? (
+                  <span
+                    aria-hidden="true"
+                    className="map-selection-avatar-image"
+                    style={{ backgroundImage: `url(${JSON.stringify(selectedBuilding.cover_image_url)})` }}
+                  />
+                ) : (
+                  <ImageIcon aria-hidden="true" size={18} />
+                )}
+              </div>
+              <div className="map-selection-copy">
                 <span style={{ background: mapAreaColors.get(buildingAreaLabel(selectedBuilding)) }} />
                 <strong>{selectedBuilding.name}</strong>
                 <small>
@@ -999,9 +1010,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               </div>
               <button className="ghost-button compact-button" onClick={() => openBuildingEditor(selectedBuilding)} type="button">
                 {t("common.edit")}
-              </button>
-              <button className="button compact-button" disabled={!canEdit || isSaving} onClick={saveBuilding} type="button">
-                {t("common.save")}
               </button>
             </aside>
           ) : null}
@@ -1144,11 +1152,14 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       {mode === "units" ? (
         <UnitManager
           buildingsByID={buildingByID}
+          canEdit={canEdit}
           filteredCount={filteredUnits.length}
           onLoadMore={(event) =>
             handleScrollLoadMore(event, visibleUnitCount, filteredUnits.length, setVisibleUnitCount, unitBatchSize)
           }
           onEditUnit={openEditUnitDialog}
+          onUpdateUnitPublication={updateUnitPublicationFromList}
+          publicationUnitID={publicationUnitID}
           totalCount={units.length}
           units={visibleUnits}
         />
@@ -1783,17 +1794,26 @@ function BuildingEditorDialog({
 
 function UnitManager({
   buildingsByID,
+  canEdit,
   units,
   filteredCount,
   onLoadMore,
   onEditUnit,
+  onUpdateUnitPublication,
+  publicationUnitID,
   totalCount
 }: {
   buildingsByID: Map<string, Building>;
+  canEdit: boolean;
   units: UnitWithListing[];
   filteredCount: number;
   onLoadMore: (event: UIEvent<HTMLDivElement>) => void;
   onEditUnit: (unit: UnitWithListing) => void;
+  onUpdateUnitPublication: (
+    unit: UnitWithListing,
+    nextStatus: Extract<ListingStatus, "available" | "unavailable">
+  ) => Promise<void> | void;
+  publicationUnitID: string | null;
   totalCount: number;
 }) {
   return (
@@ -1820,12 +1840,16 @@ function UnitManager({
               <span>Price</span>
               <span>Deal</span>
               <span>Status</span>
+              <span>Actions</span>
             </div>
             {units.map((unit) => (
               <UnitListingRow
                 building={buildingsByID.get(unit.building_id) ?? null}
+                canEdit={canEdit}
+                isUpdatingPublication={publicationUnitID === unit.id}
                 key={unit.id}
                 onEditUnit={onEditUnit}
+                onUpdateUnitPublication={onUpdateUnitPublication}
                 unit={unit}
               />
             ))}
@@ -2024,14 +2048,24 @@ function BuildingUnitListRow({
 
 function UnitListingRow({
   building,
+  canEdit,
+  isUpdatingPublication,
   unit,
-  onEditUnit
+  onEditUnit,
+  onUpdateUnitPublication
 }: {
   building: Building | null;
+  canEdit: boolean;
+  isUpdatingPublication: boolean;
   unit: UnitWithListing;
   onEditUnit: (unit: UnitWithListing) => void;
+  onUpdateUnitPublication: (
+    unit: UnitWithListing,
+    nextStatus: Extract<ListingStatus, "available" | "unavailable">
+  ) => Promise<void> | void;
 }) {
   const listing = unit.listing ?? defaultListing(unit.id);
+  const isListed = isListedUnit(unit);
 
   return (
     <div
@@ -2081,6 +2115,20 @@ function UnitListingRow({
         <span className={`status-pill ${listing.status === "available" ? "active" : "suspended"}`}>
           {listing.status}
         </span>
+      </div>
+      <div className="unit-cell">
+        <button
+          className="mini-action danger-ghost-button"
+          disabled={!canEdit || !isListed || isUpdatingPublication}
+          onClick={(event) => {
+            event.stopPropagation();
+            onUpdateUnitPublication(unit, "unavailable");
+          }}
+          type="button"
+        >
+          <EyeOff size={13} />
+          {isUpdatingPublication ? "Saving" : "Unlist"}
+        </button>
       </div>
     </div>
   );

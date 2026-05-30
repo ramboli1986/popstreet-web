@@ -1772,26 +1772,46 @@ strong {
   backdrop-filter: blur(10px);
 }
 
-.map-selection-card > div {
+.map-selection-avatar {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.map-selection-avatar-image {
+  width: 100%;
+  height: 100%;
+  background-position: center;
+  background-size: cover;
+}
+
+.map-selection-copy {
   display: grid;
   min-width: 0;
   gap: 3px;
 }
 
-.map-selection-card > div > span {
+.map-selection-copy > span {
   width: 10px;
   height: 10px;
   border-radius: 999px;
 }
 
-.map-selection-card strong,
-.map-selection-card small {
+.map-selection-copy strong,
+.map-selection-copy small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.map-selection-card small {
+.map-selection-copy small {
   color: var(--muted);
 }
 
@@ -2078,12 +2098,12 @@ strong {
 }
 
 .global-unit-table {
-  min-width: 1140px;
+  min-width: 1240px;
 }
 
 .global-unit-table .unit-table-head,
 .global-unit-table .unit-table-row {
-  grid-template-columns: 0.9fr 1.35fr 1fr 1.2fr 1.05fr 0.72fr;
+  grid-template-columns: 0.9fr 1.35fr 1fr 1.2fr 1.05fr 0.72fr 0.72fr;
 }
 
 .unit-table-head {

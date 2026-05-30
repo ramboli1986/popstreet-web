@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type Dispatch, type SetStateAction, type UIEvent } from "react";
-import { ExternalLink, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
+import { ExternalLink, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { canEditInventory, canManageAccounts, formatDate, slugify, stringArrayToInput, toStringArray } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
@@ -267,7 +267,6 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
                   <th>{t("common.units")}</th>
                   <th>{t("common.buildings")}</th>
                   <th>{t("companies.updated")}</th>
-                  <th>{t("companies.actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -307,34 +306,6 @@ export function CompanyManager({ profile }: CompanyManagerProps) {
                     <td>{company.unit_count_label ?? company.estimated_unit_count?.toLocaleString(locale) ?? t("common.na")}</td>
                     <td>{linkedBuildingCounts.get(company.id) ?? 0}</td>
                     <td>{formatDate(company.updated_at)}</td>
-                    <td>
-                      <div className="row-actions">
-                        <button
-                          className="mini-action"
-                          disabled={!canEdit}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setDraft(company);
-                          }}
-                          type="button"
-                        >
-                          <Pencil size={14} />
-                          {t("common.edit")}
-                        </button>
-                        <button
-                          className="icon-button danger"
-                          disabled={!canDelete}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            deleteCompany(company);
-                          }}
-                          title="Delete"
-                          type="button"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
                   </tr>
                 ))}
               </tbody>

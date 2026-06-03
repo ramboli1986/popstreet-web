@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Bot, Brain, Clipboard, FileText, PlayCircle, RefreshCw, RotateCcw, Save, ShieldCheck, Sparkles, WandSparkles } from "lucide-react";
+import { Bot, Brain, Clipboard, FileText, PlayCircle, RefreshCw, RotateCcw, Save, ShieldCheck, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useI18n } from "@/lib/i18n";
 import type { AccountProfile } from "@/lib/types";
@@ -44,11 +44,6 @@ type PromptSnapshot = {
   response_language_override: string | null;
   enabled: boolean;
 };
-
-const localMarketNotesTemplate = `Local market notes:
-- Long Island City / Queens Plaza: In the last 1-2 years, Queens Plaza / Court Square has added many restaurants and daily-life amenities. Transit is extremely convenient, but rents have risen noticeably. Recommend it for users who want convenience, newer buildings, and fast Manhattan access; mention the price trade-off.
-- Jersey City Downtown: Convenient PATH access, strong restaurant and daily-life options, and good value compared with many Manhattan areas. Recommend it when users accept PATH/NJ for better deals or more space.
-- Newport: Waterfront environment, river views, parks, and a cleaner/quieter feel. Recommend it for users who care about riverfront lifestyle and PATH commute; trade-off is less dense nightlife than Downtown Jersey City.`;
 
 type LanguageOption = "" | "en" | "zh" | "es" | "fr" | "ja" | "ko";
 const languageOptions: { value: LanguageOption; label: string }[] = [
@@ -219,15 +214,6 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
     }
   }
 
-  function insertMarketNotesTemplate() {
-    update(
-      "system_prompt_addendum",
-      draft.system_prompt_addendum.trim()
-        ? `${draft.system_prompt_addendum.trim()}\n\n${localMarketNotesTemplate}`
-        : localMarketNotesTemplate
-    );
-  }
-
   return (
     <div className="ai-config-page">
       <div className="page-hero">
@@ -379,10 +365,6 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
                   <RefreshCw size={15} />
                   {isSyncingPrompt ? t("aiConfig.syncingPrompt") : t("aiConfig.syncPrompt")}
                 </button>
-                <button className="ghost-button" onClick={insertMarketNotesTemplate} type="button" disabled={!canEdit}>
-                  <WandSparkles size={15} />
-                  {t("aiConfig.insertMarketNotes")}
-                </button>
                 <button
                   className="ghost-button"
                   onClick={() => copyPromptToClipboard(promptSnapshot?.effective_prompt ?? draft.system_prompt_addendum)}
@@ -461,8 +443,8 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
 
 function TestPromptPanel({ disabled }: { disabled: boolean }) {
   const { t } = useI18n();
-  const [prompt, setPrompt] = useState("我刚来纽约上班，住哪比较好？");
-  const [language, setLanguage] = useState<"en" | "zh">("zh");
+  const [prompt, setPrompt] = useState("meta");
+  const [destinationKind, setDestinationKind] = useState<"work" | "school">("work");
   const [isRunning, setIsRunning] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -492,10 +474,9 @@ function TestPromptPanel({ disabled }: { disabled: boolean }) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          message: prompt,
-          conversation_language: language,
-          current_filters: {},
-          history: [],
+          mode: "resolve_destination",
+          query: prompt,
+          destination_kind: destinationKind,
         }),
       });
 
@@ -542,12 +523,12 @@ function TestPromptPanel({ disabled }: { disabled: boolean }) {
           <label className="field" style={{ marginBottom: 0 }}>
             <span>{t("aiConfig.testLanguage")}</span>
             <select
-              value={language}
-              onChange={(event) => setLanguage(event.target.value as "en" | "zh")}
+              value={destinationKind}
+              onChange={(event) => setDestinationKind(event.target.value as "work" | "school")}
               disabled={disabled || isRunning}
             >
-              <option value="zh">中文</option>
-              <option value="en">English</option>
+              <option value="work">Work</option>
+              <option value="school">School</option>
             </select>
           </label>
 

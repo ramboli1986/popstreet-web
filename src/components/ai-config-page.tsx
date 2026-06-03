@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Bot, Brain, Clipboard, FileText, PlayCircle, RefreshCw, RotateCcw, Save, ShieldCheck, Sparkles } from "lucide-react";
+import { Clipboard, FileText, PlayCircle, RefreshCw, RotateCcw, Save, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useI18n } from "@/lib/i18n";
 import type { AccountProfile } from "@/lib/types";
@@ -16,6 +16,7 @@ type AISearchConfig = {
   max_output_tokens: number;
   response_language_override: string | null;
   system_prompt_addendum: string;
+  destination_prompt_override: string | null;
   disabled_message: string;
   updated_at: string;
   updated_by: string | null;
@@ -25,9 +26,10 @@ const defaultConfig: AISearchConfig = {
   id: CONFIG_ID,
   enabled: true,
   model: "gpt-5.4-mini",
-  max_output_tokens: 500,
+  max_output_tokens: 900,
   response_language_override: null,
   system_prompt_addendum: "",
+  destination_prompt_override: null,
   disabled_message: "AI search is temporarily off. Please use the manual filters in Explore.",
   updated_at: new Date().toISOString(),
   updated_by: null,
@@ -38,6 +40,7 @@ type PromptSnapshot = {
   prompt_source: string;
   base_prompt: string;
   system_prompt_addendum: string;
+  destination_prompt_override: string | null;
   effective_prompt: string;
   model: string;
   max_output_tokens: number;
@@ -45,38 +48,43 @@ type PromptSnapshot = {
   enabled: boolean;
 };
 
-type LanguageOption = "" | "en" | "zh" | "es" | "fr" | "ja" | "ko";
-const languageOptions: { value: LanguageOption; label: string }[] = [
-  { value: "", label: "Follow user" },
-  { value: "en", label: "English" },
-  { value: "zh", label: "中文" },
-  { value: "es", label: "Español" },
-  { value: "fr", label: "Français" },
-  { value: "ja", label: "日本語" },
-  { value: "ko", label: "한국어" },
-];
-
 type AIConfigPageProps = {
   profile: AccountProfile | null;
 };
 
+function normalizeConfig(value: Partial<AISearchConfig> | null): AISearchConfig {
+  return {
+    ...defaultConfig,
+    ...(value ?? {}),
+    destination_prompt_override: value?.destination_prompt_override ?? null,
+    system_prompt_addendum: value?.system_prompt_addendum ?? "",
+    response_language_override: value?.response_language_override ?? null,
+  };
+}
+
 export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null }) {
   const { t } = useI18n();
   const [config, setConfig] = useState<AISearchConfig>(defaultConfig);
-  const [draft, setDraft] = useState<AISearchConfig>(defaultConfig);
+  const [promptSnapshot, setPromptSnapshot] = useState<PromptSnapshot | null>(null);
+  const [promptDraft, setPromptDraft] = useState("");
+  const [testQuery, setTestQuery] = useState("meta");
+  const [destinationKind, setDestinationKind] = useState<"work" | "school">("work");
+  const [testResult, setTestResult] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncingPrompt, setIsSyncingPrompt] = useState(false);
-  const [promptSnapshot, setPromptSnapshot] = useState<PromptSnapshot | null>(null);
+  const [isRunningTest, setIsRunningTest] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const canEdit = canManageAccounts(profile?.role, profile?.account_kind, profile?.status);
-  const isDirty = JSON.stringify(draft) !== JSON.stringify(config);
+  const backendPrompt = promptSnapshot?.effective_prompt ?? config.destination_prompt_override ?? "";
+  const isPromptDirty = promptDraft.trim() !== backendPrompt.trim();
 
   const loadConfig = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
+
     const { data, error } = await supabase
       .from("ai_search_configs")
       .select("*")
@@ -89,25 +97,102 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
       return;
     }
 
-    const next = (data as AISearchConfig | null) ?? defaultConfig;
+    const next = normalizeConfig(data as Partial<AISearchConfig> | null);
     setConfig(next);
-    setDraft(next);
+    setPromptDraft((current) => current.trim() ? current : next.destination_prompt_override ?? "");
     setIsLoading(false);
   }, []);
 
+  const syncPromptSnapshot = useCallback(
+    async (announce = true) => {
+      setIsSyncingPrompt(true);
+      setErrorMessage(null);
+      if (announce) {
+        setMessage(null);
+      }
+
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (!supabaseUrl || !supabaseKey) {
+        setErrorMessage("Supabase env not configured.");
+        setIsSyncingPrompt(false);
+        return;
+      }
+
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const accessToken = sessionData.session?.access_token;
+        if (!accessToken) {
+          setErrorMessage("Admin session is required to sync the live prompt.");
+          return;
+        }
+
+        const response = await fetch(`${supabaseUrl}/functions/v1/ai-search?admin_prompt=1`, {
+          headers: {
+            apikey: supabaseKey,
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+        const body = (await response.json()) as PromptSnapshot | { error?: string };
+        if (!response.ok) {
+          setErrorMessage("error" in body && body.error ? body.error : `HTTP ${response.status}`);
+          return;
+        }
+
+        const snapshot = body as PromptSnapshot;
+        setPromptSnapshot(snapshot);
+        setPromptDraft(snapshot.effective_prompt);
+        setConfig((prev) => ({
+          ...prev,
+          enabled: snapshot.enabled,
+          model: snapshot.model,
+          max_output_tokens: snapshot.max_output_tokens,
+          response_language_override: snapshot.response_language_override,
+          system_prompt_addendum: snapshot.system_prompt_addendum,
+          destination_prompt_override: snapshot.destination_prompt_override,
+        }));
+        if (announce) {
+          setMessage(t("aiConfig.promptSynced"));
+        }
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : "Could not sync prompt.");
+      } finally {
+        setIsSyncingPrompt(false);
+      }
+    },
+    [t]
+  );
+
   useEffect(() => {
     loadConfig();
-  }, [loadConfig]);
+    syncPromptSnapshot(false);
+  }, [loadConfig, syncPromptSnapshot]);
 
-  function update<K extends keyof AISearchConfig>(key: K, value: AISearchConfig[K]) {
-    setDraft((prev) => ({ ...prev, [key]: value }));
+  async function copyPromptToClipboard() {
+    try {
+      await navigator.clipboard.writeText(promptDraft);
+      setMessage(t("aiConfig.promptCopied"));
+      setErrorMessage(null);
+    } catch {
+      setErrorMessage(t("aiConfig.copyFailed"));
+    }
+  }
+
+  function resetPromptDraft() {
+    setPromptDraft(backendPrompt);
     setMessage(null);
     setErrorMessage(null);
   }
 
-  async function save() {
+  async function savePromptOverride() {
     if (!canEdit) {
       setErrorMessage(t("aiConfig.noPermission"));
+      return;
+    }
+
+    const nextPrompt = promptDraft.trim();
+    if (!nextPrompt) {
+      setErrorMessage(t("aiConfig.promptRequired"));
       return;
     }
 
@@ -115,21 +200,11 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
     setErrorMessage(null);
     setMessage(null);
 
-    const tokensNumber = Number(draft.max_output_tokens);
-    if (!Number.isFinite(tokensNumber) || tokensNumber < 100 || tokensNumber > 4000) {
-      setErrorMessage(t("aiConfig.tokensRange"));
-      setIsSaving(false);
-      return;
-    }
-
     const payload = {
+      ...config,
       id: CONFIG_ID,
-      enabled: draft.enabled,
-      model: draft.model.trim() || defaultConfig.model,
-      max_output_tokens: Math.round(tokensNumber),
-      response_language_override: draft.response_language_override?.trim() || null,
-      system_prompt_addendum: draft.system_prompt_addendum,
-      disabled_message: draft.disabled_message.trim() || defaultConfig.disabled_message,
+      system_prompt_addendum: "",
+      destination_prompt_override: nextPrompt,
       updated_by: profile?.id ?? null,
     };
 
@@ -146,20 +221,35 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
       return;
     }
 
-    const next = data as AISearchConfig;
+    const next = normalizeConfig(data as Partial<AISearchConfig>);
     setConfig(next);
-    setDraft(next);
+    setPromptSnapshot((prev) =>
+      prev
+        ? {
+            ...prev,
+            system_prompt_addendum: "",
+            destination_prompt_override: nextPrompt,
+            effective_prompt: nextPrompt,
+          }
+        : prev
+    );
     setMessage(t("aiConfig.saved"));
   }
 
-  function resetDraft() {
-    setDraft(config);
-    setMessage(null);
-    setErrorMessage(null);
-  }
+  async function runTest() {
+    const activePrompt = promptDraft.trim();
+    const query = testQuery.trim();
+    if (!activePrompt) {
+      setErrorMessage(t("aiConfig.promptRequired"));
+      return;
+    }
+    if (!query) {
+      setErrorMessage(t("aiConfig.testQueryRequired"));
+      return;
+    }
 
-  async function syncPromptSnapshot() {
-    setIsSyncingPrompt(true);
+    setIsRunningTest(true);
+    setTestResult(null);
     setErrorMessage(null);
     setMessage(null);
 
@@ -167,7 +257,7 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!supabaseUrl || !supabaseKey) {
       setErrorMessage("Supabase env not configured.");
-      setIsSyncingPrompt(false);
+      setIsRunningTest(false);
       return;
     }
 
@@ -175,42 +265,41 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
       const { data: sessionData } = await supabase.auth.getSession();
       const accessToken = sessionData.session?.access_token;
       if (!accessToken) {
-        setErrorMessage("Admin session is required to sync the live prompt.");
-        setIsSyncingPrompt(false);
+        setErrorMessage("Admin session is required to test this prompt.");
         return;
       }
 
-      const response = await fetch(`${supabaseUrl}/functions/v1/ai-search?admin_prompt=1`, {
+      const response = await fetch(`${supabaseUrl}/functions/v1/ai-search`, {
+        method: "POST",
         headers: {
           apikey: supabaseKey,
           Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
         },
+        body: JSON.stringify({
+          mode: "resolve_destination",
+          query,
+          destination_kind: destinationKind,
+          prompt_override: activePrompt,
+        }),
       });
-      const body = (await response.json()) as PromptSnapshot | { error?: string };
-      if (!response.ok) {
-        setErrorMessage("error" in body && body.error ? body.error : `HTTP ${response.status}`);
-        return;
+
+      const text = await response.text();
+      let pretty = text;
+      try {
+        pretty = JSON.stringify(JSON.parse(text), null, 2);
+      } catch {
+        // Keep raw text when the function returns non-JSON.
       }
 
-      const snapshot = body as PromptSnapshot;
-      setPromptSnapshot(snapshot);
-      setConfig((prev) => ({ ...prev, system_prompt_addendum: snapshot.system_prompt_addendum }));
-      setDraft((prev) => ({ ...prev, system_prompt_addendum: snapshot.system_prompt_addendum }));
-      setMessage(t("aiConfig.promptSynced"));
+      if (!response.ok) {
+        setErrorMessage(`HTTP ${response.status}`);
+      }
+      setTestResult(pretty);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Could not sync prompt.");
+      setErrorMessage(error instanceof Error ? error.message : "Unknown error");
     } finally {
-      setIsSyncingPrompt(false);
-    }
-  }
-
-  async function copyPromptToClipboard(value: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-      setMessage(t("aiConfig.promptCopied"));
-      setErrorMessage(null);
-    } catch {
-      setErrorMessage(t("aiConfig.copyFailed"));
+      setIsRunningTest(false);
     }
   }
 
@@ -223,18 +312,22 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
           <p>{t("aiConfig.subtitle")}</p>
         </div>
         <div className="page-actions">
-          <button className="ghost-button" onClick={resetDraft} type="button" disabled={!isDirty || isSaving}>
+          <button className="ghost-button" onClick={() => syncPromptSnapshot()} type="button" disabled={isSyncingPrompt}>
+            <RefreshCw size={16} />
+            {isSyncingPrompt ? t("aiConfig.syncingPrompt") : t("aiConfig.syncPrompt")}
+          </button>
+          <button className="ghost-button" onClick={resetPromptDraft} type="button" disabled={!isPromptDirty || isSaving}>
             <RotateCcw size={16} />
             {t("aiConfig.revert")}
           </button>
           <button
             className="button dark-button"
-            onClick={save}
+            onClick={savePromptOverride}
             type="button"
-            disabled={!isDirty || isSaving || !canEdit}
+            disabled={!isPromptDirty || isSaving || !canEdit || !promptDraft.trim()}
           >
             <Save size={16} />
-            {isSaving ? t("aiConfig.saving") : t("aiConfig.save")}
+            {isSaving ? t("aiConfig.saving") : t("aiConfig.syncToBackend")}
           </button>
         </div>
       </div>
@@ -243,328 +336,125 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
       {message ? <div className="message compact-message">{message}</div> : null}
       {errorMessage ? <div className="message compact-message error">{errorMessage}</div> : null}
 
-      <section className="ai-status-grid">
-        <article className="ai-status-card">
-          <Bot size={18} />
+      <article className="analytics-card ai-config-card ai-prompt-card">
+        <div className="card-heading">
           <div>
-            <span>{t("aiConfig.liveStatus")}</span>
-            <strong>{config.enabled ? t("aiConfig.statusOn") : t("aiConfig.statusOff")}</strong>
+            <div className="eyebrow">{t("aiConfig.prompts")}</div>
+            <h3>{t("aiConfig.promptEditor")}</h3>
           </div>
-        </article>
-        <article className="ai-status-card">
-          <Brain size={18} />
-          <div>
-            <span>{t("aiConfig.model")}</span>
-            <strong>{config.model}</strong>
-          </div>
-        </article>
-        <article className="ai-status-card">
-          <Sparkles size={18} />
-          <div>
-            <span>{t("aiConfig.maxOutputTokens")}</span>
-            <strong>{config.max_output_tokens}</strong>
-          </div>
-        </article>
-        <article className="ai-status-card muted-card">
-          <ShieldCheck size={18} />
-          <div>
-            <span>{t("aiConfig.lastUpdated")}</span>
-            <strong>{new Date(config.updated_at).toLocaleString()}</strong>
-          </div>
-        </article>
-      </section>
-
-      <section className="ai-config-grid">
-        <article className="analytics-card ai-config-card">
-          <div className="card-heading">
-            <div>
-              <div className="eyebrow">{t("aiConfig.runtime")}</div>
-              <h3>{t("aiConfig.runtime")}</h3>
-            </div>
-            <Brain size={18} />
-          </div>
-          <div className="ai-card-body ai-form-grid">
-            <label className="ai-toggle-row">
-              <input
-                type="checkbox"
-                checked={draft.enabled}
-                onChange={(event) => update("enabled", event.target.checked)}
-                disabled={!canEdit}
-              />
-              <span className="ai-toggle-control" aria-hidden="true" />
-              <span>
-                <strong>{t("aiConfig.enableLabel")}</strong>
-                <small>{t("aiConfig.enableDesc")}</small>
-              </span>
-            </label>
-
-            <label className="field">
-              <span>{t("aiConfig.model")}</span>
-              <input
-                value={draft.model}
-                onChange={(event) => update("model", event.target.value)}
-                placeholder="gpt-5.4-mini"
-                disabled={!canEdit}
-              />
-              <small>{t("aiConfig.modelHint")}</small>
-            </label>
-
-            <label className="field">
-              <span>{t("aiConfig.maxOutputTokens")}</span>
-              <input
-                type="number"
-                min={100}
-                max={4000}
-                value={draft.max_output_tokens}
-                onChange={(event) => update("max_output_tokens", Number(event.target.value))}
-                disabled={!canEdit}
-              />
-              <small>{t("aiConfig.maxOutputTokensHint")}</small>
-            </label>
-
-            <label className="field">
-              <span>{t("aiConfig.responseLanguageOverride")}</span>
-              <select
-                value={draft.response_language_override ?? ""}
-                onChange={(event) =>
-                  update("response_language_override", event.target.value ? (event.target.value as LanguageOption) : null)
-                }
-                disabled={!canEdit}
-              >
-                {languageOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-              <small>{t("aiConfig.responseLanguageHint")}</small>
-            </label>
-          </div>
-        </article>
-
-        <article className="analytics-card ai-config-card ai-prompt-card">
-          <div className="card-heading">
-            <div>
-              <div className="eyebrow">{t("aiConfig.prompts")}</div>
-              <h3>{t("aiConfig.prompts")}</h3>
-            </div>
-            <FileText size={18} />
-          </div>
-          <div className="ai-card-body">
-            <div className="ai-prompt-toolbar">
-              <div>
-                <strong>{t("aiConfig.promptSource")}</strong>
-                <span>
-                  {promptSnapshot
-                    ? `${promptSnapshot.prompt_source} · ${promptSnapshot.prompt_version}`
-                    : t("aiConfig.promptSourceHint")}
-                </span>
-              </div>
-              <div className="ai-prompt-actions">
-                <button className="ghost-button" onClick={syncPromptSnapshot} type="button" disabled={isSyncingPrompt}>
-                  <RefreshCw size={15} />
-                  {isSyncingPrompt ? t("aiConfig.syncingPrompt") : t("aiConfig.syncPrompt")}
-                </button>
-                <button
-                  className="ghost-button"
-                  onClick={() => copyPromptToClipboard(promptSnapshot?.effective_prompt ?? draft.system_prompt_addendum)}
-                  type="button"
-                  disabled={!promptSnapshot && !draft.system_prompt_addendum.trim()}
-                >
-                  <Clipboard size={15} />
-                  {t("aiConfig.copyEffectivePrompt")}
-                </button>
-              </div>
-            </div>
-
-            {promptSnapshot ? (
-              <div className="ai-prompt-meta-grid">
-                <div>
-                  <span>{t("aiConfig.promptVersion")}</span>
-                  <strong>{promptSnapshot.prompt_version}</strong>
-                </div>
-                <div>
-                  <span>{t("aiConfig.liveModel")}</span>
-                  <strong>{promptSnapshot.model}</strong>
-                </div>
-                <div>
-                  <span>{t("aiConfig.effectivePromptLength")}</span>
-                  <strong>{promptSnapshot.effective_prompt.length.toLocaleString()} chars</strong>
-                </div>
-              </div>
-            ) : null}
-
-            <label className="field">
-              <span>{t("aiConfig.addendum")}</span>
-              <textarea
-                value={draft.system_prompt_addendum}
-                onChange={(event) => update("system_prompt_addendum", event.target.value)}
-                placeholder={t("aiConfig.addendumPlaceholder")}
-                rows={6}
-                disabled={!canEdit}
-              />
-              <small>{t("aiConfig.addendumHint")}</small>
-            </label>
-
-            {promptSnapshot ? (
-              <div className="ai-prompt-preview-grid">
-                <label className="field">
-                  <span>{t("aiConfig.basePrompt")}</span>
-                  <textarea value={promptSnapshot.base_prompt} rows={12} readOnly />
-                  <small>{t("aiConfig.basePromptHint")}</small>
-                </label>
-
-                <label className="field">
-                  <span>{t("aiConfig.effectivePrompt")}</span>
-                  <textarea value={promptSnapshot.effective_prompt} rows={12} readOnly />
-                  <small>{t("aiConfig.effectivePromptHint")}</small>
-                </label>
-              </div>
-            ) : null}
-
-            <label className="field">
-              <span>{t("aiConfig.disabledMessage")}</span>
-              <textarea
-                value={draft.disabled_message}
-                onChange={(event) => update("disabled_message", event.target.value)}
-                rows={3}
-                disabled={!canEdit}
-              />
-              <small>{t("aiConfig.disabledMessageHint")}</small>
-            </label>
-          </div>
-        </article>
-      </section>
-
-      <TestPromptPanel disabled={isLoading} />
-    </div>
-  );
-}
-
-function TestPromptPanel({ disabled }: { disabled: boolean }) {
-  const { t } = useI18n();
-  const [prompt, setPrompt] = useState("meta");
-  const [destinationKind, setDestinationKind] = useState<"work" | "school">("work");
-  const [isRunning, setIsRunning] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  async function run() {
-    setIsRunning(true);
-    setResult(null);
-    setErrorMessage(null);
-
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!supabaseUrl || !supabaseKey) {
-      setErrorMessage("Supabase env not configured.");
-      setIsRunning(false);
-      return;
-    }
-
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const accessToken = sessionData.session?.access_token ?? supabaseKey;
-
-      const response = await fetch(`${supabaseUrl}/functions/v1/ai-search`, {
-        method: "POST",
-        headers: {
-          apikey: supabaseKey,
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          mode: "resolve_destination",
-          query: prompt,
-          destination_kind: destinationKind,
-        }),
-      });
-
-      const text = await response.text();
-      let pretty = text;
-      try {
-        pretty = JSON.stringify(JSON.parse(text), null, 2);
-      } catch {
-        // leave as raw text
-      }
-
-      if (!response.ok) {
-        setErrorMessage(`HTTP ${response.status}`);
-      }
-      setResult(pretty);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unknown error");
-    } finally {
-      setIsRunning(false);
-    }
-  }
-
-  return (
-    <section className="analytics-card ai-config-card" style={{ marginTop: 22 }}>
-      <div className="card-heading">
-        <div>
-          <div className="eyebrow">{t("aiConfig.testPanel")}</div>
-          <h3>{t("aiConfig.testPanelTitle")}</h3>
+          <FileText size={18} />
         </div>
-        <PlayCircle size={18} />
-      </div>
-      <div className="ai-card-body">
-        <label className="field">
-          <span>{t("aiConfig.testPrompt")}</span>
-          <textarea
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            rows={3}
-            disabled={disabled || isRunning}
-          />
-        </label>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
-          <label className="field" style={{ marginBottom: 0 }}>
-            <span>{t("aiConfig.testLanguage")}</span>
-            <select
-              value={destinationKind}
-              onChange={(event) => setDestinationKind(event.target.value as "work" | "school")}
-              disabled={disabled || isRunning}
-            >
-              <option value="work">Work</option>
-              <option value="school">School</option>
-            </select>
+        <div className="ai-card-body">
+          <div className="ai-prompt-toolbar">
+            <div>
+              <strong>{t("aiConfig.promptSource")}</strong>
+              <span>
+                {promptSnapshot
+                  ? `${promptSnapshot.prompt_source} · ${promptSnapshot.prompt_version}`
+                  : t("aiConfig.promptSourceHint")}
+              </span>
+            </div>
+            <div className="ai-prompt-actions">
+              <button className="ghost-button" onClick={copyPromptToClipboard} type="button" disabled={!promptDraft.trim()}>
+                <Clipboard size={15} />
+                {t("aiConfig.copyEffectivePrompt")}
+              </button>
+            </div>
+          </div>
+
+          <div className="ai-prompt-meta-grid">
+            <div>
+              <span>{t("aiConfig.liveModel")}</span>
+              <strong>{promptSnapshot?.model ?? config.model}</strong>
+            </div>
+            <div>
+              <span>{t("aiConfig.effectivePromptLength")}</span>
+              <strong>{promptDraft.length.toLocaleString()} chars</strong>
+            </div>
+            <div>
+              <span>{t("aiConfig.lastUpdated")}</span>
+              <strong>{new Date(config.updated_at).toLocaleString()}</strong>
+            </div>
+          </div>
+
+          <label className="field">
+            <span>{t("aiConfig.promptEditor")}</span>
+            <textarea
+              value={promptDraft}
+              onChange={(event) => setPromptDraft(event.target.value)}
+              placeholder={t("aiConfig.promptEditorPlaceholder")}
+              rows={22}
+              disabled={!canEdit || isLoading}
+            />
+            <small>{t("aiConfig.promptEditorHint")}</small>
           </label>
 
-          <button
-            className="button dark-button"
-            type="button"
-            onClick={run}
-            disabled={disabled || isRunning || !prompt.trim()}
-            style={{ marginLeft: "auto" }}
-          >
-            <PlayCircle size={16} />
-            {isRunning ? t("aiConfig.running") : t("aiConfig.runTest")}
-          </button>
+          <div style={{ borderTop: "1px solid #e5e7eb", marginTop: 20, paddingTop: 20 }}>
+            <div className="card-heading" style={{ marginBottom: 14 }}>
+              <div>
+                <div className="eyebrow">{t("aiConfig.testPanel")}</div>
+                <h3>{t("aiConfig.testPanelTitle")}</h3>
+              </div>
+              <PlayCircle size={18} />
+            </div>
+
+            <label className="field">
+              <span>{t("aiConfig.testPrompt")}</span>
+              <input
+                value={testQuery}
+                onChange={(event) => setTestQuery(event.target.value)}
+                placeholder="meta, jpmorgan, nyu..."
+                disabled={isRunningTest}
+              />
+            </label>
+
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 12, marginTop: 8 }}>
+              <label className="field" style={{ marginBottom: 0, maxWidth: 220 }}>
+                <span>{t("aiConfig.testLanguage")}</span>
+                <select
+                  value={destinationKind}
+                  onChange={(event) => setDestinationKind(event.target.value as "work" | "school")}
+                  disabled={isRunningTest}
+                >
+                  <option value="work">Work</option>
+                  <option value="school">School</option>
+                </select>
+              </label>
+
+              <button
+                className="button dark-button"
+                type="button"
+                onClick={runTest}
+                disabled={isRunningTest || !testQuery.trim() || !promptDraft.trim()}
+                style={{ marginLeft: "auto" }}
+              >
+                <Sparkles size={16} />
+                {isRunningTest ? t("aiConfig.running") : t("aiConfig.runTest")}
+              </button>
+            </div>
+
+            {testResult ? (
+              <pre
+                style={{
+                  marginTop: 14,
+                  padding: 14,
+                  background: "#0f172a",
+                  color: "#e2e8f0",
+                  borderRadius: 12,
+                  fontSize: 12.5,
+                  lineHeight: 1.55,
+                  overflowX: "auto",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-word",
+                }}
+              >
+                {testResult}
+              </pre>
+            ) : null}
+          </div>
         </div>
-
-        {errorMessage ? <div className="message compact-message error" style={{ marginTop: 12 }}>{errorMessage}</div> : null}
-
-        {result ? (
-          <pre
-            style={{
-              marginTop: 14,
-              padding: 14,
-              background: "#0f172a",
-              color: "#e2e8f0",
-              borderRadius: 12,
-              fontSize: 12.5,
-              lineHeight: 1.55,
-              overflowX: "auto",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word"
-            }}
-          >
-            {result}
-          </pre>
-        ) : null}
-      </div>
-    </section>
+      </article>
+    </div>
   );
 }

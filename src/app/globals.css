@@ -1169,7 +1169,7 @@ strong {
 }
 
 .ai-destinations-toolbar {
-  grid-template-columns: minmax(260px, 1fr) 150px 150px 150px auto auto;
+  grid-template-columns: minmax(260px, 1fr) 150px auto auto;
 }
 
 .search-box {
@@ -1372,6 +1372,11 @@ strong {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.option-summary {
+  display: grid;
+  gap: 5px;
 }
 
 .clickable-row {
@@ -1860,6 +1865,34 @@ strong {
 .destination-alias-list {
   display: grid;
   gap: 8px;
+}
+
+.destination-options-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.destination-option-list {
+  display: grid;
+  gap: 12px;
+}
+
+.destination-option-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcfe;
+  padding: 12px;
+}
+
+.destination-option-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
 }
 
 .destination-alias-card {

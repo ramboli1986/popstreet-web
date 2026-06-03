@@ -5,6 +5,21 @@ export type ListingStatus = "available" | "unavailable" | "pending" | "rented" |
 export type AISearchDestinationOptionKind = "office" | "campus" | "school" | "company" | "other";
 export type AISearchDestinationKind = "work" | "school";
 
+export type AISearchDestinationOption = {
+  id: string;
+  name: string;
+  address: string;
+  subtitle: string;
+  kind: AISearchDestinationOptionKind;
+  confidence: number;
+};
+
+export type AISearchDestinationResult = {
+  query: string;
+  options: AISearchDestinationOption[];
+  message: string;
+};
+
 export type AccountProfile = {
   id: string;
   email: string;
@@ -44,6 +59,18 @@ export type AISearchDestinationAlias = {
   destination_id: string;
   raw_query: string;
   match_confidence: number;
+  hit_count: number;
+  last_used_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AISearchDestinationQuery = {
+  query_normalized: string;
+  destination_kind: AISearchDestinationKind;
+  raw_query: string;
+  result: AISearchDestinationResult;
+  model: string | null;
   hit_count: number;
   last_used_at: string;
   created_at: string;

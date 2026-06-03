@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Clipboard, FileText, PlayCircle, RefreshCw, RotateCcw, Save, Sparkles } from "lucide-react";
+import { FileText, PlayCircle, RotateCcw, Save, Sparkles } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useI18n } from "@/lib/i18n";
 import type { AccountProfile } from "@/lib/types";
@@ -72,7 +72,6 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
   const [testResult, setTestResult] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isSyncingPrompt, setIsSyncingPrompt] = useState(false);
   const [isRunningTest, setIsRunningTest] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -103,19 +102,14 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
     setIsLoading(false);
   }, []);
 
-  const syncPromptSnapshot = useCallback(
-    async (announce = true) => {
-      setIsSyncingPrompt(true);
+  const loadCurrentPrompt = useCallback(
+    async () => {
       setErrorMessage(null);
-      if (announce) {
-        setMessage(null);
-      }
 
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
       const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
       if (!supabaseUrl || !supabaseKey) {
         setErrorMessage("Supabase env not configured.");
-        setIsSyncingPrompt(false);
         return;
       }
 
@@ -123,7 +117,7 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
         const { data: sessionData } = await supabase.auth.getSession();
         const accessToken = sessionData.session?.access_token;
         if (!accessToken) {
-          setErrorMessage("Admin session is required to sync the live prompt.");
+          setErrorMessage("Admin session is required to load the current prompt.");
           return;
         }
 
@@ -151,32 +145,17 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
           system_prompt_addendum: snapshot.system_prompt_addendum,
           destination_prompt_override: snapshot.destination_prompt_override,
         }));
-        if (announce) {
-          setMessage(t("aiConfig.promptSynced"));
-        }
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : "Could not sync prompt.");
-      } finally {
-        setIsSyncingPrompt(false);
+        setErrorMessage(error instanceof Error ? error.message : "Could not load prompt.");
       }
     },
-    [t]
+    []
   );
 
   useEffect(() => {
     loadConfig();
-    syncPromptSnapshot(false);
-  }, [loadConfig, syncPromptSnapshot]);
-
-  async function copyPromptToClipboard() {
-    try {
-      await navigator.clipboard.writeText(promptDraft);
-      setMessage(t("aiConfig.promptCopied"));
-      setErrorMessage(null);
-    } catch {
-      setErrorMessage(t("aiConfig.copyFailed"));
-    }
-  }
+    loadCurrentPrompt();
+  }, [loadConfig, loadCurrentPrompt]);
 
   function resetPromptDraft() {
     setPromptDraft(backendPrompt);
@@ -312,10 +291,6 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
           <p>{t("aiConfig.subtitle")}</p>
         </div>
         <div className="page-actions">
-          <button className="ghost-button" onClick={() => syncPromptSnapshot()} type="button" disabled={isSyncingPrompt}>
-            <RefreshCw size={16} />
-            {isSyncingPrompt ? t("aiConfig.syncingPrompt") : t("aiConfig.syncPrompt")}
-          </button>
           <button className="ghost-button" onClick={resetPromptDraft} type="button" disabled={!isPromptDirty || isSaving}>
             <RotateCcw size={16} />
             {t("aiConfig.revert")}
@@ -327,7 +302,7 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
             disabled={!isPromptDirty || isSaving || !canEdit || !promptDraft.trim()}
           >
             <Save size={16} />
-            {isSaving ? t("aiConfig.saving") : t("aiConfig.syncToBackend")}
+            {isSaving ? t("aiConfig.saving") : t("aiConfig.save")}
           </button>
         </div>
       </div>
@@ -346,23 +321,6 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
         </div>
 
         <div className="ai-card-body">
-          <div className="ai-prompt-toolbar">
-            <div>
-              <strong>{t("aiConfig.promptSource")}</strong>
-              <span>
-                {promptSnapshot
-                  ? `${promptSnapshot.prompt_source} · ${promptSnapshot.prompt_version}`
-                  : t("aiConfig.promptSourceHint")}
-              </span>
-            </div>
-            <div className="ai-prompt-actions">
-              <button className="ghost-button" onClick={copyPromptToClipboard} type="button" disabled={!promptDraft.trim()}>
-                <Clipboard size={15} />
-                {t("aiConfig.copyEffectivePrompt")}
-              </button>
-            </div>
-          </div>
-
           <div className="ai-prompt-meta-grid">
             <div>
               <span>{t("aiConfig.liveModel")}</span>

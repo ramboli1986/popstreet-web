@@ -1168,6 +1168,10 @@ strong {
   grid-template-columns: minmax(260px, 1fr) minmax(220px, 0.9fr) 150px 140px auto auto auto;
 }
 
+.ai-destinations-toolbar {
+  grid-template-columns: minmax(260px, 1fr) 150px 150px 150px auto auto;
+}
+
 .search-box {
   display: flex;
   align-items: center;
@@ -1362,6 +1366,12 @@ strong {
 
 .admin-table tbody tr.selected {
   background: var(--brand-soft);
+}
+
+.alias-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
 .clickable-row {
@@ -1837,6 +1847,61 @@ strong {
 
 .form-grid.three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.alias-editor-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 130px 140px auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.destination-alias-list {
+  display: grid;
+  gap: 8px;
+}
+
+.destination-alias-card {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 76px 104px auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfe;
+  padding: 10px;
+}
+
+.destination-alias-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.destination-alias-metric {
+  display: grid;
+  gap: 2px;
+}
+
+.destination-alias-metric span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.destination-alias-metric strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.compact-empty-state {
+  padding: 16px;
 }
 
 .field {
@@ -2387,6 +2452,11 @@ strong {
   .deal-row,
   .geo-row,
   .ops-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .alias-editor-row,
+  .destination-alias-card {
     grid-template-columns: 1fr;
   }
 

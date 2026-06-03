@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import type { Session } from "@supabase/supabase-js";
 import {
+  Bot,
   BriefcaseBusiness,
   Building2,
   ChevronRight,
@@ -21,6 +22,7 @@ import {
 import { AuthPanel } from "./auth-panel";
 import { AccountsManager } from "./accounts-manager";
 import { AIConfigPage } from "./ai-config-page";
+import { AIDestinationsManager } from "./ai-destinations-manager";
 import { ApplicationsManager } from "./applications-manager";
 import { BuildingManager } from "./building-manager";
 import { CompanyManager } from "./company-manager";
@@ -40,6 +42,7 @@ type ViewKey =
   | "applications"
   | "mobileUsers"
   | "aiConfig"
+  | "aiDestinations"
   | "accounts";
 type AdminAppProps = {
   initialView?: ViewKey;
@@ -54,6 +57,7 @@ const routeByView: Record<ViewKey, string> = {
   applications: "/applications",
   mobileUsers: "/mobile-users",
   aiConfig: "/ai-config",
+  aiDestinations: "/ai-destinations",
   accounts: "/accounts"
 };
 
@@ -78,6 +82,9 @@ function viewFromPath(pathname: string): ViewKey {
   }
   if (pathname.startsWith("/ai-config")) {
     return "aiConfig";
+  }
+  if (pathname.startsWith("/ai-destinations")) {
+    return "aiDestinations";
   }
   if (pathname.startsWith("/accounts")) {
     return "accounts";
@@ -219,6 +226,7 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
       { key: "applications" as const, label: t("nav.applications"), icon: ClipboardList },
       { key: "mobileUsers" as const, label: t("nav.mobileUsers"), icon: Smartphone, requiresAccountAdmin: true },
       { key: "aiConfig" as const, label: t("nav.aiConfig"), icon: Settings2 },
+      { key: "aiDestinations" as const, label: t("nav.aiDestinations"), icon: Bot },
       { key: "accounts" as const, label: t("nav.accounts"), icon: UsersRound, requiresAccountAdmin: true }
     ],
     [t]
@@ -414,6 +422,7 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
           {view === "applications" ? <ApplicationsManager profile={profile} /> : null}
           {view === "mobileUsers" && canManageAccountAccess ? <MobileUsersManager /> : null}
           {view === "aiConfig" ? <AIConfigPage profile={profile} /> : null}
+          {view === "aiDestinations" ? <AIDestinationsManager profile={profile} /> : null}
           {view === "accounts" && canManageAccountAccess ? <AccountsManager currentProfile={profile} /> : null}
         </section>
       </div>

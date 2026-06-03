@@ -2,6 +2,8 @@ export type AdminRole = "super_admin" | "admin" | "editor" | "viewer";
 export type AccountStatus = "active" | "pending" | "suspended";
 export type AccountKind = "admin" | "mobile";
 export type ListingStatus = "available" | "unavailable" | "pending" | "rented" | "archived";
+export type AISearchDestinationOptionKind = "office" | "campus" | "school" | "company" | "other";
+export type AISearchDestinationKind = "work" | "school";
 
 export type AccountProfile = {
   id: string;
@@ -16,6 +18,34 @@ export type AccountProfile = {
   email_confirmed_at?: string | null;
   display_name: string | null;
   phone: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AISearchDestination = {
+  id: string;
+  display_name: string;
+  display_name_normalized: string;
+  address: string;
+  address_normalized: string;
+  subtitle: string;
+  option_kind: AISearchDestinationOptionKind;
+  model: string | null;
+  confidence: number;
+  is_active: boolean;
+  last_verified_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AISearchDestinationAlias = {
+  query_normalized: string;
+  destination_kind: AISearchDestinationKind;
+  destination_id: string;
+  raw_query: string;
+  match_confidence: number;
+  hit_count: number;
+  last_used_at: string;
   created_at: string;
   updated_at: string;
 };

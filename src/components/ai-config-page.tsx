@@ -14,6 +14,7 @@ type AISearchConfig = {
   enabled: boolean;
   model: string;
   max_output_tokens: number;
+  reasoning_effort: "minimal" | "low" | "medium" | "high";
   response_language_override: string | null;
   system_prompt_addendum: string;
   destination_prompt_override: string | null;
@@ -27,6 +28,7 @@ const defaultConfig: AISearchConfig = {
   enabled: true,
   model: "gpt-5.4-mini",
   max_output_tokens: 900,
+  reasoning_effort: "medium",
   response_language_override: null,
   system_prompt_addendum: "",
   destination_prompt_override: null,
@@ -44,6 +46,7 @@ type PromptSnapshot = {
   effective_prompt: string;
   model: string;
   max_output_tokens: number;
+  reasoning_effort: "minimal" | "low" | "medium" | "high";
   response_language_override: string | null;
   enabled: boolean;
 };
@@ -57,6 +60,7 @@ function normalizeConfig(value: Partial<AISearchConfig> | null): AISearchConfig 
     ...defaultConfig,
     ...(value ?? {}),
     destination_prompt_override: value?.destination_prompt_override ?? null,
+    reasoning_effort: value?.reasoning_effort ?? "medium",
     system_prompt_addendum: value?.system_prompt_addendum ?? "",
     response_language_override: value?.response_language_override ?? null,
   };
@@ -141,6 +145,7 @@ export function AIConfigPage({ profile }: AIConfigPageProps = { profile: null })
           enabled: snapshot.enabled,
           model: snapshot.model,
           max_output_tokens: snapshot.max_output_tokens,
+          reasoning_effort: snapshot.reasoning_effort,
           response_language_override: snapshot.response_language_override,
           system_prompt_addendum: snapshot.system_prompt_addendum,
           destination_prompt_override: snapshot.destination_prompt_override,

@@ -26,8 +26,8 @@ type AISearchConfig = {
 const defaultConfig: AISearchConfig = {
   id: CONFIG_ID,
   enabled: true,
-  model: "gpt-5.4-mini",
-  max_output_tokens: 900,
+  model: "gemini-3.1-flash-lite",
+  max_output_tokens: 3000,
   reasoning_effort: "medium",
   response_language_override: null,
   system_prompt_addendum: "",

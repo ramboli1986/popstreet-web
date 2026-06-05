@@ -8,3 +8,5 @@ yarn-error.log*
 tsconfig.tsbuildinfo
 .DS_Store
 .vercel
+local-building-images/
+building-area-lists/

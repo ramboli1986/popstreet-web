@@ -74,6 +74,8 @@ type BuildingServiceOption = {
 };
 
 const listingStatuses: ListingStatus[] = ["available", "pending", "unavailable", "rented", "archived"];
+const buildingMediaBucket = "building-media";
+const acceptedBuildingImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const buildingImageKinds: BuildingImageKind[] = [
   "gallery",
   "exterior",
@@ -195,6 +197,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [mapResetSignal, setMapResetSignal] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [uploadingBuildingID, setUploadingBuildingID] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -607,6 +610,98 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       ...current.filter((image) => image.building_id !== draft.id),
       ...nextImages
     ]);
+  }
+
+  async function uploadBuildingImages(building: Building, files: File[], kind: BuildingImageKind) {
+    if (!canEdit || building.id.startsWith("new-")) {
+      return;
+    }
+
+    const imageFiles = files.filter((file) => acceptedBuildingImageTypes.includes(file.type));
+
+    if (imageFiles.length === 0) {
+      setError("Choose JPG, PNG, WebP, or GIF images to upload.");
+      return;
+    }
+
+    setUploadingBuildingID(building.id);
+    setError(null);
+    setMessage(null);
+
+    const existingImages = buildingImages.filter((image) => image.building_id === building.id);
+    let nextSortOrder = nextMediaSortOrder(existingImages);
+    let nextCoverSortOrder = firstMediaSortOrder(existingImages) - imageFiles.length * 10;
+    const uploadedImages: BuildingImage[] = [];
+
+    try {
+      for (const file of imageFiles) {
+        const objectPath = buildingMediaObjectPath(building, file);
+        const sortOrder = kind === "cover" ? nextCoverSortOrder : nextSortOrder;
+        const { error: uploadError } = await supabase.storage.from(buildingMediaBucket).upload(objectPath, file, {
+          cacheControl: "31536000",
+          contentType: file.type,
+          upsert: false
+        });
+
+        if (uploadError) {
+          throw new Error(uploadError.message);
+        }
+
+        const publicURL = supabase.storage.from(buildingMediaBucket).getPublicUrl(objectPath).data.publicUrl;
+        const { data: imageRow, error: imageError } = await supabase
+          .from("building_images")
+          .insert({
+            building_id: building.id,
+            kind,
+            url: publicURL,
+            alt_text: `${building.name} ${imageKindLabel(kind)}`,
+            sort_order: sortOrder
+          })
+          .select("*")
+          .single();
+
+        if (imageError) {
+          await supabase.storage.from(buildingMediaBucket).remove([objectPath]);
+          throw new Error(imageError.message);
+        }
+
+        uploadedImages.push(imageRow as BuildingImage);
+        nextSortOrder += 10;
+        nextCoverSortOrder += 10;
+      }
+
+      const nextImages = normalizeMediaSort([...existingImages, ...uploadedImages]);
+      const nextCoverImageURL = coverImageURLFromImages(nextImages);
+
+      if (kind === "cover" && nextCoverImageURL) {
+        const { error: coverError } = await supabase
+          .from("buildings")
+          .update({ cover_image_url: nextCoverImageURL })
+          .eq("id", building.id);
+
+        if (coverError) {
+          throw new Error(coverError.message);
+        }
+
+        setBuildings((current) =>
+          current.map((item) => (item.id === building.id ? { ...item, cover_image_url: nextCoverImageURL } : item))
+        );
+        setSelectedBuilding((current) =>
+          current?.id === building.id ? { ...current, cover_image_url: nextCoverImageURL } : current
+        );
+        setDraft((current) => (current?.id === building.id ? { ...current, cover_image_url: nextCoverImageURL } : current));
+      }
+
+      setBuildingImages((current) => [
+        ...current.filter((image) => image.building_id !== building.id),
+        ...nextImages
+      ]);
+      setMessage(`${uploadedImages.length} image${uploadedImages.length === 1 ? "" : "s"} uploaded to ${building.name}.`);
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Images could not be uploaded.");
+    } finally {
+      setUploadingBuildingID(null);
+    }
   }
 
   function updateBuildingServiceDrafts(nextServices: BuildingService[]) {
@@ -1028,9 +1123,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             neighborhoods={neighborhoods}
             services={buildingServicesForDraft}
             transitLines={buildingTransitLinesForDraft}
+            isUploadingImages={uploadingBuildingID === draft.id}
             onClose={() => setIsBuildingEditorOpen(false)}
             onDelete={deleteBuilding}
             onImagesChange={updateBuildingImageDrafts}
+            onUploadImages={uploadBuildingImages}
             onSave={saveBuilding}
             onServicesChange={updateBuildingServiceDrafts}
             onTransitLinesChange={updateBuildingTransitLineDrafts}
@@ -1207,9 +1304,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           neighborhoods={neighborhoods}
           services={buildingServicesForDraft}
           transitLines={buildingTransitLinesForDraft}
+          isUploadingImages={uploadingBuildingID === draft.id}
           onClose={() => setIsBuildingEditorOpen(false)}
           onDelete={deleteBuilding}
           onImagesChange={updateBuildingImageDrafts}
+          onUploadImages={uploadBuildingImages}
           onSave={saveBuilding}
           onServicesChange={updateBuildingServiceDrafts}
           onTransitLinesChange={updateBuildingTransitLineDrafts}
@@ -1369,11 +1468,13 @@ function BuildingEditor({
   canEdit,
   draft,
   images,
+  isUploadingImages,
   managementCompanies,
   neighborhoods,
   services,
   transitLines,
   onImagesChange,
+  onUploadImages,
   onServicesChange,
   onTransitLinesChange,
   updateDraft
@@ -1381,11 +1482,13 @@ function BuildingEditor({
   canEdit: boolean;
   draft: Building;
   images: BuildingImage[];
+  isUploadingImages: boolean;
   managementCompanies: ManagementCompany[];
   neighborhoods: Neighborhood[];
   services: BuildingService[];
   transitLines: BuildingTransitLine[];
   onImagesChange: (images: BuildingImage[]) => void;
+  onUploadImages: (building: Building, files: File[], kind: BuildingImageKind) => Promise<void> | void;
   onServicesChange: (services: BuildingService[]) => void;
   onTransitLinesChange: (lines: BuildingTransitLine[]) => void;
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
@@ -1523,6 +1626,13 @@ function BuildingEditor({
         canEdit={canEdit}
         onChange={onServicesChange}
         services={services}
+      />
+
+      <BuildingImageUploader
+        building={draft}
+        canEdit={canEdit}
+        isUploading={isUploadingImages}
+        onUpload={onUploadImages}
       />
 
       <ImageCollectionEditor
@@ -1716,11 +1826,13 @@ function BuildingEditorDialog({
   canEdit,
   draft,
   isSaving,
+  isUploadingImages,
   managementCompanies,
   neighborhoods,
   services,
   transitLines,
   onImagesChange,
+  onUploadImages,
   onServicesChange,
   onTransitLinesChange,
   updateDraft,
@@ -1732,11 +1844,13 @@ function BuildingEditorDialog({
   canEdit: boolean;
   draft: Building;
   isSaving: boolean;
+  isUploadingImages: boolean;
   managementCompanies: ManagementCompany[];
   neighborhoods: Neighborhood[];
   services: BuildingService[];
   transitLines: BuildingTransitLine[];
   onImagesChange: (images: BuildingImage[]) => void;
+  onUploadImages: (building: Building, files: File[], kind: BuildingImageKind) => Promise<void> | void;
   onServicesChange: (services: BuildingService[]) => void;
   onTransitLinesChange: (lines: BuildingTransitLine[]) => void;
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
@@ -1776,11 +1890,13 @@ function BuildingEditorDialog({
             canEdit={canEdit}
             draft={draft}
             images={buildingImages}
+            isUploadingImages={isUploadingImages}
             managementCompanies={managementCompanies}
             neighborhoods={neighborhoods}
             services={services}
             transitLines={transitLines}
             onImagesChange={onImagesChange}
+            onUploadImages={onUploadImages}
             onServicesChange={onServicesChange}
             onTransitLinesChange={onTransitLinesChange}
             updateDraft={updateDraft}
@@ -2520,6 +2636,101 @@ type ImageRowBase = {
   sort_order: number;
   created_at: string;
 };
+
+function BuildingImageUploader({
+  building,
+  canEdit,
+  isUploading,
+  onUpload
+}: {
+  building: Building;
+  canEdit: boolean;
+  isUploading: boolean;
+  onUpload: (building: Building, files: File[], kind: BuildingImageKind) => Promise<void> | void;
+}) {
+  const [kind, setKind] = useState<BuildingImageKind>("gallery");
+  const [isDragging, setIsDragging] = useState(false);
+  const isNewBuilding = building.id.startsWith("new-");
+  const isDisabled = !canEdit || isUploading || isNewBuilding;
+  const dropzoneClassName = [
+    "image-upload-dropzone",
+    isDragging ? "dragging" : "",
+    isDisabled ? "disabled" : ""
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  function uploadFiles(fileList: FileList | null) {
+    const files = Array.from(fileList ?? []);
+
+    if (files.length === 0 || isDisabled) {
+      return;
+    }
+
+    void onUpload(building, files, kind);
+  }
+
+  return (
+    <section className="image-upload-panel">
+      <div className="image-upload-head">
+        <div>
+          <div className="form-section-title">Upload building images</div>
+          <p>Drag files from the local building folder, choose one category, and upload directly to storage.</p>
+        </div>
+        <label className="field image-upload-kind">
+          <span>Category</span>
+          <select disabled={isDisabled} value={kind} onChange={(event) => setKind(event.target.value as BuildingImageKind)}>
+            {buildingImageKinds.map((option) => (
+              <option key={option} value={option}>
+                {imageKindLabel(option)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <label
+        className={dropzoneClassName}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          if (!isDisabled) {
+            setIsDragging(true);
+          }
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          setIsDragging(false);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setIsDragging(false);
+          uploadFiles(event.dataTransfer.files);
+        }}
+      >
+        <input
+          accept={acceptedBuildingImageTypes.join(",")}
+          disabled={isDisabled}
+          multiple
+          type="file"
+          onChange={(event) => {
+            uploadFiles(event.target.files);
+            event.target.value = "";
+          }}
+        />
+        <UploadCloud size={22} />
+        <strong>{isUploading ? "Uploading..." : "Drop images here or click to browse"}</strong>
+        <span>
+          {isNewBuilding
+            ? "Save this building before uploading images."
+            : "JPG, PNG, WebP, or GIF. Uploaded images are added to the media list below."}
+        </span>
+      </label>
+    </section>
+  );
+}
 
 function ImageCollectionEditor<TImage extends ImageRowBase>({
   canEdit,
@@ -3314,6 +3525,49 @@ function coverImageURLFromImages(images: ImageRowBase[]) {
       .find((image) => image.kind === "cover" && image.url.trim().length > 0)
       ?.url ?? null
   );
+}
+
+function nextMediaSortOrder(images: ImageRowBase[]) {
+  const maxSortOrder = images.reduce((maxValue, image) => Math.max(maxValue, image.sort_order), -10);
+
+  return maxSortOrder + 10;
+}
+
+function firstMediaSortOrder(images: ImageRowBase[]) {
+  return images.reduce((minValue, image) => Math.min(minValue, image.sort_order), 0);
+}
+
+function buildingMediaObjectPath(building: Building, file: File) {
+  const buildingFolder = slugify(`${building.name}-${building.id.slice(0, 8)}`) || building.id;
+  const baseName = slugify(file.name.replace(/\.[^.]+$/, "")) || "image";
+  const uniqueID =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+  return `${buildingFolder}/${Date.now()}-${uniqueID}-${baseName}.${imageFileExtension(file)}`;
+}
+
+function imageFileExtension(file: File) {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+
+  if (extension && ["jpg", "jpeg", "png", "webp", "gif"].includes(extension)) {
+    return extension === "jpeg" ? "jpg" : extension;
+  }
+
+  if (file.type === "image/png") {
+    return "png";
+  }
+
+  if (file.type === "image/webp") {
+    return "webp";
+  }
+
+  if (file.type === "image/gif") {
+    return "gif";
+  }
+
+  return "jpg";
 }
 
 function normalizeBuildingServices(services: BuildingService[]) {

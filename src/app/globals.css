@@ -1169,7 +1169,7 @@ strong {
 }
 
 .ai-destinations-toolbar {
-  grid-template-columns: minmax(260px, 1fr) 150px auto auto;
+  grid-template-columns: minmax(260px, 1fr) 150px 150px auto auto;
 }
 
 .search-box {
@@ -1997,6 +1997,27 @@ strong {
   grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
 }
 
+.description-label-selector {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 10px;
+}
+
+.description-label-group {
+  display: grid;
+  gap: 6px;
+}
+
+.description-label-group-title {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.description-label-grid {
+  grid-template-columns: repeat(auto-fill, minmax(138px, 1fr));
+}
+
 .check-option {
   display: inline-flex;
   min-height: 34px;
@@ -2027,6 +2048,22 @@ strong {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+}
+
+.choice-add-row input {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  outline: none;
+  padding: 6px 9px;
+}
+
+.choice-add-row input:focus {
+  border-color: rgb(64 158 255 / 70%);
+  box-shadow: 0 0 0 3px rgb(64 158 255 / 12%);
 }
 
 .image-upload-panel {

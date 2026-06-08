@@ -77,6 +77,24 @@ export type AISearchDestinationQuery = {
   updated_at: string;
 };
 
+export type ResolvedCommuteDestination = {
+  id: string;
+  query: string;
+  destination_kind: AISearchDestinationKind;
+  place_id: string;
+  name: string;
+  address: string;
+  subtitle: string;
+  option_kind: AISearchDestinationOptionKind;
+  latitude: number | null;
+  longitude: number | null;
+  nearby_transit_lines: string[];
+  confidence: number;
+  provider: string;
+  first_seen_at: string;
+  last_resolved_at: string;
+};
+
 export type Neighborhood = {
   id: string;
   slug: string;
@@ -115,6 +133,8 @@ export type Building = {
   latitude: number;
   longitude: number;
   score: number | null;
+  convenience_score: number | null;
+  activity_score: number | null;
   summary: string | null;
   description_labels: string[];
   cover_image_url: string | null;
@@ -141,6 +161,7 @@ export type Building = {
 };
 
 export type BuildingImageKind =
+  | "avatar"
   | "cover"
   | "gallery"
   | "exterior"

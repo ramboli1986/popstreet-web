@@ -1,16 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type ReactNode, type SetStateAction, type UIEvent } from "react";
-import { BriefcaseBusiness, Plus, RefreshCw, Save, School, Search, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { BriefcaseBusiness, Plus, RefreshCw, Save, School, Search, TrainFront, Trash2, X } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { canEditInventory, canManageAccounts, formatDate } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import { TRANSIT_LINE_OPTIONS, normalizeTransitLines, toggleTransitLine } from "@/lib/transit-lines";
 import type {
   AccountProfile,
   AISearchDestinationKind,
-  AISearchDestinationOption,
   AISearchDestinationOptionKind,
-  AISearchDestinationQuery
+  ResolvedCommuteDestination
 } from "@/lib/types";
 
 type AIDestinationsManagerProps = {
@@ -18,20 +18,20 @@ type AIDestinationsManagerProps = {
 };
 
 type DestinationKindFilter = AISearchDestinationKind | "all";
-type OptionDraft = AISearchDestinationOption;
+type TransitLineFilter = (typeof TRANSIT_LINE_OPTIONS)[number] | "all";
+type DestinationDraft = ResolvedCommuteDestination & { _isNew?: boolean };
 
 const destinationKinds: AISearchDestinationKind[] = ["work", "school"];
 const optionKinds: AISearchDestinationOptionKind[] = ["office", "campus", "school", "company", "other"];
-const queryBatchSize = 50;
 
 export function AIDestinationsManager({ profile }: AIDestinationsManagerProps) {
   const { language, t } = useI18n();
   const locale = language === "zh" ? "zh-CN" : "en-US";
-  const [queries, setQueries] = useState<AISearchDestinationQuery[]>([]);
-  const [draft, setDraft] = useState<AISearchDestinationQuery | null>(null);
+  const [destinations, setDestinations] = useState<ResolvedCommuteDestination[]>([]);
+  const [draft, setDraft] = useState<DestinationDraft | null>(null);
   const [search, setSearch] = useState("");
   const [destinationKindFilter, setDestinationKindFilter] = useState<DestinationKindFilter>("all");
-  const [visibleCount, setVisibleCount] = useState(queryBatchSize);
+  const [transitLineFilter, setTransitLineFilter] = useState<TransitLineFilter>("all");
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -40,14 +40,14 @@ export function AIDestinationsManager({ profile }: AIDestinationsManagerProps) {
   const canEdit = canEditInventory(profile?.role, profile?.account_kind, profile?.status);
   const canDelete = canManageAccounts(profile?.role, profile?.account_kind, profile?.status);
 
-  const loadQueries = useCallback(async () => {
+  const loadDestinations = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     const { data, error: loadError } = await supabase
-      .from("ai_search_destination_queries")
+      .from("resolved_commute_destinations")
       .select("*")
-      .order("updated_at", { ascending: false })
+      .order("last_resolved_at", { ascending: false })
       .limit(2000);
 
     setIsLoading(false);
@@ -57,134 +57,94 @@ export function AIDestinationsManager({ profile }: AIDestinationsManagerProps) {
       return;
     }
 
-    setQueries(((data ?? []) as AISearchDestinationQuery[]).map(normalizedQueryRow));
+    setDestinations(sortDestinations(((data ?? []) as ResolvedCommuteDestination[]).map(normalizeDestinationRow)));
   }, []);
 
   useEffect(() => {
-    loadQueries();
-  }, [loadQueries]);
+    loadDestinations();
+  }, [loadDestinations]);
 
-  useEffect(() => {
-    setVisibleCount(queryBatchSize);
-  }, [destinationKindFilter, search]);
-
-  const filteredQueries = useMemo(() => {
+  const filteredDestinations = useMemo(() => {
     const query = search.trim().toLowerCase();
 
-    return queries.filter((row) => {
+    return destinations.filter((row) => {
       const matchesKind = destinationKindFilter === "all" || row.destination_kind === destinationKindFilter;
-      const options = normalizedOptions(row.result.options);
+      const matchesLine = transitLineFilter === "all" || row.nearby_transit_lines.includes(transitLineFilter);
       const matchesSearch =
         !query ||
         [
-          row.raw_query,
-          row.query_normalized,
+          row.query,
+          row.name,
+          row.address,
+          row.subtitle,
+          row.place_id,
+          row.option_kind,
+          row.provider,
           row.destination_kind,
-          row.model,
-          row.result.message,
-          ...options.flatMap((option) => [option.name, option.address, option.subtitle, option.kind])
+          ...row.nearby_transit_lines
         ]
           .filter(Boolean)
-          .some((value) => value!.toLowerCase().includes(query));
+          .some((value) => value.toLowerCase().includes(query));
 
-      return matchesKind && matchesSearch;
+      return matchesKind && matchesLine && matchesSearch;
     });
-  }, [destinationKindFilter, queries, search]);
+  }, [destinationKindFilter, destinations, search, transitLineFilter]);
 
-  const visibleQueries = useMemo(() => filteredQueries.slice(0, visibleCount), [filteredQueries, visibleCount]);
+  const distinctTransitLineCount = useMemo(
+    () => new Set(destinations.flatMap((row) => row.nearby_transit_lines)).size,
+    [destinations]
+  );
 
-  function createQueryDraft() {
+  function createDestinationDraft() {
     const now = new Date().toISOString();
 
     setDraft({
-      query_normalized: "",
+      id: `new-${Date.now()}`,
+      query: "",
       destination_kind: "work",
-      raw_query: "",
-      result: {
-        query: "",
-        options: [],
-        message: "I found a few possible locations. Pick the one you mean."
-      },
-      model: "manual-admin",
-      hit_count: 0,
-      last_used_at: now,
-      created_at: now,
-      updated_at: now
+      place_id: `manual-${Date.now()}`,
+      name: "",
+      address: "",
+      subtitle: "",
+      option_kind: "office",
+      latitude: null,
+      longitude: null,
+      nearby_transit_lines: [],
+      confidence: 0.75,
+      provider: "manual-admin",
+      first_seen_at: now,
+      last_resolved_at: now,
+      _isNew: true
     });
     setMessage(null);
     setError(null);
   }
 
-  function updateDraft(patch: Partial<AISearchDestinationQuery>) {
-    setDraft((current) => (current ? normalizedQueryRow({ ...current, ...patch }) : current));
+  function editDestination(row: ResolvedCommuteDestination) {
+    setDraft({ ...normalizeDestinationRow(row), nearby_transit_lines: [...row.nearby_transit_lines] });
+    setMessage(null);
+    setError(null);
   }
 
-  function updateResult(patch: Partial<AISearchDestinationQuery["result"]>) {
-    setDraft((current) =>
-      current
-        ? normalizedQueryRow({
-            ...current,
-            result: {
-              ...current.result,
-              ...patch
-            }
-          })
-        : current
-    );
-  }
-
-  function updateOption(index: number, patch: Partial<OptionDraft>) {
+  function updateDraft(patch: Partial<DestinationDraft>) {
     setDraft((current) => {
-      if (!current) return current;
-      const options = normalizedOptions(current.result.options).map((option, optionIndex) =>
-        optionIndex === index ? normalizedOption({ ...option, ...patch }, optionIndex) : option
-      );
-      return normalizedQueryRow({ ...current, result: { ...current.result, options } });
+      if (!current) {
+        return current;
+      }
+
+      const nextDraft = normalizeDestinationRow({ ...current, ...patch });
+      return { ...nextDraft, _isNew: current._isNew };
     });
   }
 
-  function addOption() {
-    setDraft((current) => {
-      if (!current) return current;
-      const options = [
-        ...normalizedOptions(current.result.options),
-        {
-          id: `office-${Date.now()}`,
-          name: "",
-          address: "",
-          subtitle: "",
-          kind: current.destination_kind === "school" ? "campus" : "office",
-          confidence: 0.8
-        } satisfies OptionDraft
-      ];
-      return normalizedQueryRow({ ...current, result: { ...current.result, options } });
-    });
-  }
-
-  function deleteOption(index: number) {
-    setDraft((current) => {
-      if (!current) return current;
-      const options = normalizedOptions(current.result.options).filter((_option, optionIndex) => optionIndex !== index);
-      return normalizedQueryRow({ ...current, result: { ...current.result, options } });
-    });
-  }
-
-  async function saveQuery() {
+  async function saveDestination() {
     if (!draft || !canEdit) {
       return;
     }
 
-    const rawQuery = draft.raw_query.trim();
-    const queryNormalized = normalizeDestinationQuery(rawQuery || draft.query_normalized);
-    const options = normalizedOptions(draft.result.options).filter((option) => option.name.trim() && option.address.trim());
-
-    if (!queryNormalized || !rawQuery) {
-      setError(t("aiDestinations.queryRequired"));
-      return;
-    }
-
-    if (options.length === 0) {
-      setError(t("aiDestinations.optionRequired"));
+    const payload = destinationPayload(draft);
+    if (!payload.query || !payload.place_id || !payload.name || !payload.address) {
+      setError(t("aiDestinations.required"));
       return;
     }
 
@@ -192,29 +152,11 @@ export function AIDestinationsManager({ profile }: AIDestinationsManagerProps) {
     setError(null);
     setMessage(null);
 
-    const payload = {
-      query_normalized: queryNormalized,
-      destination_kind: draft.destination_kind,
-      raw_query: rawQuery,
-      result: {
-        query: rawQuery,
-        options,
-        message:
-          draft.result.message.trim() ||
-          (options.length === 1
-            ? `Using ${options[0].name}.`
-            : "I found a few possible locations. Pick the one you mean.")
-      },
-      model: draft.model?.trim() || "manual-admin",
-      last_used_at: draft.last_used_at || new Date().toISOString()
-    };
+    const request = draft._isNew
+      ? supabase.from("resolved_commute_destinations").insert(payload).select("*").single()
+      : supabase.from("resolved_commute_destinations").update(payload).eq("id", draft.id).select("*").single();
 
-    const { data, error: saveError } = await supabase
-      .from("ai_search_destination_queries")
-      .upsert(payload, { onConflict: "query_normalized,destination_kind" })
-      .select("*")
-      .single();
-
+    const { data, error: saveError } = await request;
     setIsSaving(false);
 
     if (saveError) {
@@ -222,42 +164,35 @@ export function AIDestinationsManager({ profile }: AIDestinationsManagerProps) {
       return;
     }
 
-    const saved = normalizedQueryRow(data as AISearchDestinationQuery);
-    setQueries((current) => {
-      const withoutSaved = current.filter(
-        (row) =>
-          !(row.query_normalized === saved.query_normalized && row.destination_kind === saved.destination_kind)
-      );
-      return [saved, ...withoutSaved].sort((first, second) => second.updated_at.localeCompare(first.updated_at));
-    });
+    const saved = normalizeDestinationRow(data as ResolvedCommuteDestination);
+    setDestinations((current) => sortDestinations([saved, ...current.filter((row) => row.id !== saved.id)]));
     setDraft(saved);
     setMessage(t("aiDestinations.saved"));
   }
 
-  async function deleteQuery(row: AISearchDestinationQuery) {
+  async function deleteDestination(row: DestinationDraft) {
     if (!canDelete) {
       return;
     }
 
-    const confirmed = window.confirm(t("aiDestinations.deleteConfirm", { name: row.raw_query || row.query_normalized }));
+    if (row._isNew) {
+      setDraft(null);
+      return;
+    }
+
+    const confirmed = window.confirm(t("aiDestinations.deleteConfirm", { name: row.name || row.query }));
     if (!confirmed) {
       return;
     }
 
-    const { error: deleteError } = await supabase
-      .from("ai_search_destination_queries")
-      .delete()
-      .eq("query_normalized", row.query_normalized)
-      .eq("destination_kind", row.destination_kind);
+    const { error: deleteError } = await supabase.from("resolved_commute_destinations").delete().eq("id", row.id);
 
     if (deleteError) {
       setError(deleteError.message);
       return;
     }
 
-    setQueries((current) =>
-      current.filter((item) => !(item.query_normalized === row.query_normalized && item.destination_kind === row.destination_kind))
-    );
+    setDestinations((current) => current.filter((item) => item.id !== row.id));
     setDraft(null);
     setMessage(t("aiDestinations.deleted"));
   }
@@ -267,15 +202,15 @@ export function AIDestinationsManager({ profile }: AIDestinationsManagerProps) {
       <div className="page-hero manager-hero">
         <div>
           <div className="eyebrow">{t("aiDestinations.eyebrow")}</div>
-          <h1>{t("aiDestinations.title", { count: queries.length.toLocaleString(locale) })}</h1>
+          <h1>{t("aiDestinations.title", { count: destinations.length.toLocaleString(locale) })}</h1>
           <p>{t("aiDestinations.subtitle")}</p>
         </div>
         <div className="page-actions">
-          <button className="ghost-button" onClick={loadQueries} disabled={isLoading} type="button">
+          <button className="ghost-button" onClick={loadDestinations} disabled={isLoading} type="button">
             <RefreshCw size={16} />
             {t("common.refresh")}
           </button>
-          <button className="button" disabled={!canEdit} onClick={createQueryDraft} type="button">
+          <button className="button" disabled={!canEdit} onClick={createDestinationDraft} type="button">
             <Plus size={16} />
             {t("aiDestinations.add")}
           </button>
@@ -302,17 +237,25 @@ export function AIDestinationsManager({ profile }: AIDestinationsManagerProps) {
           <option value="all">{t("aiDestinations.allKinds")}</option>
           {destinationKinds.map((kind) => (
             <option key={kind} value={kind}>
-              {kind === "work" ? t("aiDestinations.work") : t("aiDestinations.school")}
+              {destinationKindLabel(kind, t)}
+            </option>
+          ))}
+        </select>
+        <select value={transitLineFilter} onChange={(event) => setTransitLineFilter(event.target.value as TransitLineFilter)}>
+          <option value="all">{t("aiDestinations.allLines")}</option>
+          {TRANSIT_LINE_OPTIONS.map((line) => (
+            <option key={line} value={line}>
+              {line}
             </option>
           ))}
         </select>
         <div className="toolbar-stat">
-          <strong>{filteredQueries.length.toLocaleString(locale)}</strong>
-          <span>{t("aiDestinations.queries")}</span>
+          <strong>{filteredDestinations.length.toLocaleString(locale)}</strong>
+          <span>{t("aiDestinations.destinations")}</span>
         </div>
         <div className="toolbar-stat">
-          <strong>{queries.reduce((sum, row) => sum + normalizedOptions(row.result.options).length, 0).toLocaleString(locale)}</strong>
-          <span>{t("aiDestinations.offices")}</span>
+          <strong>{distinctTransitLineCount.toLocaleString(locale)}</strong>
+          <span>{t("aiDestinations.transitLines")}</span>
         </div>
       </section>
 
@@ -320,96 +263,89 @@ export function AIDestinationsManager({ profile }: AIDestinationsManagerProps) {
         <div className="panel-heading">
           <div>
             <div className="eyebrow">{t("aiDestinations.list")}</div>
-            <h3>{t("aiDestinations.cacheRecords")}</h3>
+            <h3>{t("aiDestinations.tableTitle")}</h3>
           </div>
           <span className="count-pill">
-            {isLoading ? t("common.loading") : `${filteredQueries.length.toLocaleString(locale)} ${t("common.total")}`}
+            {isLoading ? t("common.loading") : `${filteredDestinations.length.toLocaleString(locale)} ${t("common.total")}`}
           </span>
         </div>
 
-        {visibleQueries.length === 0 ? (
+        {filteredDestinations.length === 0 ? (
           <div className="empty-state">{t("aiDestinations.empty")}</div>
         ) : (
-          <div
-            className="admin-table-wrap"
-            onScroll={(event) =>
-              handleScrollLoadMore(event, visibleCount, filteredQueries.length, setVisibleCount, queryBatchSize)
-            }
-          >
+          <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
                 <tr>
                   <th>No.</th>
                   <th>{t("aiDestinations.query")}</th>
+                  <th>{t("aiDestinations.destination")}</th>
                   <th>{t("aiDestinations.kind")}</th>
-                  <th>{t("aiDestinations.offices")}</th>
-                  <th>{t("aiDestinations.hits")}</th>
+                  <th>{t("aiDestinations.address")}</th>
+                  <th>{t("aiDestinations.transit")}</th>
+                  <th>{t("aiDestinations.confidence")}</th>
                   <th>{t("aiDestinations.updated")}</th>
                 </tr>
               </thead>
               <tbody>
-                {visibleQueries.map((row, index) => {
-                  const options = normalizedOptions(row.result.options);
-
-                  return (
-                    <tr
-                      className="clickable-row"
-                      key={`${row.query_normalized}-${row.destination_kind}`}
-                      onClick={() => setDraft(row)}
-                      tabIndex={0}
-                    >
-                      <td className="row-index">{index + 1}</td>
-                      <td>
-                        <button
-                          className="table-primary-link"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setDraft(row);
-                          }}
-                          type="button"
-                        >
-                          {row.raw_query || row.query_normalized}
-                        </button>
-                        <div className="table-subtext">{row.query_normalized}</div>
-                      </td>
-                      <td>
-                        <span className="count-pill">
-                          {row.destination_kind === "work" ? <BriefcaseBusiness size={12} /> : <School size={12} />}
-                          {row.destination_kind === "work" ? t("aiDestinations.work") : t("aiDestinations.school")}
-                        </span>
-                      </td>
-                      <td>
-                        <OptionSummary options={options} />
-                      </td>
-                      <td>{row.hit_count.toLocaleString(locale)}</td>
-                      <td>
-                        {formatDate(row.updated_at)}
-                        <div className="table-subtext">{row.model ?? t("common.na")}</div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {filteredDestinations.map((row, index) => (
+                  <tr className="clickable-row" key={row.id} onClick={() => editDestination(row)} tabIndex={0}>
+                    <td className="row-index">{index + 1}</td>
+                    <td>
+                      <button
+                        className="table-primary-link"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          editDestination(row);
+                        }}
+                        type="button"
+                      >
+                        {row.query}
+                      </button>
+                      <div className="table-subtext">{row.place_id}</div>
+                    </td>
+                    <td>
+                      <strong>{row.name}</strong>
+                      <div className="table-subtext">{row.subtitle || formatProvider(row.provider)}</div>
+                    </td>
+                    <td>
+                      <span className="count-pill">
+                        {row.destination_kind === "work" ? <BriefcaseBusiness size={12} /> : <School size={12} />}
+                        {destinationKindLabel(row.destination_kind, t)}
+                      </span>
+                    </td>
+                    <td>
+                      <div>{row.address}</div>
+                      <div className="table-subtext">
+                        {formatCoordinate(row.latitude)}, {formatCoordinate(row.longitude)}
+                      </div>
+                    </td>
+                    <td>
+                      <TransitLinePills lines={row.nearby_transit_lines} />
+                    </td>
+                    <td>{formatConfidence(row.confidence)}</td>
+                    <td>
+                      {formatDate(row.last_resolved_at)}
+                      <div className="table-subtext">{formatProvider(row.provider)}</div>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-            <LoadMoreStatus shown={visibleQueries.length} total={filteredQueries.length} />
           </div>
         )}
       </section>
 
       {draft ? (
-        <QueryDrawer
+        <DestinationDrawer
           canDelete={canDelete}
           canEdit={canEdit}
           draft={draft}
           isSaving={isSaving}
-          onAddOption={addOption}
           onClose={() => setDraft(null)}
-          onDeleteOption={deleteOption}
-          onDeleteQuery={deleteQuery}
-          onSave={saveQuery}
+          onDelete={deleteDestination}
+          onSave={saveDestination}
           onUpdateDraft={updateDraft}
-          onUpdateOption={updateOption}
-          onUpdateResult={updateResult}
           t={t}
         />
       ) : null}
@@ -417,44 +353,37 @@ export function AIDestinationsManager({ profile }: AIDestinationsManagerProps) {
   );
 }
 
-function QueryDrawer({
+function DestinationDrawer({
   canDelete,
   canEdit,
   draft,
   isSaving,
-  onAddOption,
   onClose,
-  onDeleteOption,
-  onDeleteQuery,
+  onDelete,
   onSave,
   onUpdateDraft,
-  onUpdateOption,
-  onUpdateResult,
   t
 }: {
   canDelete: boolean;
   canEdit: boolean;
-  draft: AISearchDestinationQuery;
+  draft: DestinationDraft;
   isSaving: boolean;
-  onAddOption: () => void;
   onClose: () => void;
-  onDeleteOption: (index: number) => void;
-  onDeleteQuery: (query: AISearchDestinationQuery) => void;
+  onDelete: (destination: DestinationDraft) => void;
   onSave: () => void;
-  onUpdateDraft: (patch: Partial<AISearchDestinationQuery>) => void;
-  onUpdateOption: (index: number, patch: Partial<OptionDraft>) => void;
-  onUpdateResult: (patch: Partial<AISearchDestinationQuery["result"]>) => void;
+  onUpdateDraft: (patch: Partial<DestinationDraft>) => void;
   t: (key: string, params?: Record<string, number | string>) => string;
 }) {
-  const options = normalizedOptions(draft.result.options);
-
   return (
     <div className="drawer-backdrop" role="presentation" onMouseDown={onClose}>
       <aside className="side-drawer building-drawer" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
         <header className="drawer-header">
           <div>
             <div className="eyebrow">{t("aiDestinations.drawerEyebrow")}</div>
-            <h3>{draft.raw_query || t("aiDestinations.newDestination")}</h3>
+            <h3>{draft.name || draft.query || t("aiDestinations.newDestination")}</h3>
+            <div className="drawer-header-subtitle">
+              {draft._isNew ? t("aiDestinations.newDestination") : `${t("aiDestinations.updated")} ${formatDate(draft.last_resolved_at)}`}
+            </div>
           </div>
           <button className="icon-button" onClick={onClose} title="Close" type="button">
             <X size={16} />
@@ -465,117 +394,96 @@ function QueryDrawer({
           <section className="editor-form">
             <div className="form-section-title">{t("aiDestinations.queryProfile")}</div>
             <div className="form-grid dense">
+              <InputField disabled={!canEdit} label={t("aiDestinations.query")} value={draft.query} onChange={(query) => onUpdateDraft({ query })} />
               <InputField
                 disabled={!canEdit}
-                label={t("aiDestinations.rawQuery")}
-                value={draft.raw_query}
-                onChange={(value) => onUpdateDraft({ raw_query: value, query_normalized: normalizeDestinationQuery(value) })}
+                label={t("aiDestinations.placeId")}
+                value={draft.place_id}
+                onChange={(place_id) => onUpdateDraft({ place_id })}
               />
-              <InputField disabled label={t("aiDestinations.queryNormalized")} value={draft.query_normalized} onChange={() => undefined} />
               <SelectField
                 disabled={!canEdit}
                 label={t("aiDestinations.kind")}
                 value={draft.destination_kind}
-                onChange={(value) => onUpdateDraft({ destination_kind: value as AISearchDestinationKind })}
+                onChange={(destination_kind) => onUpdateDraft({ destination_kind: destination_kind as AISearchDestinationKind })}
               >
-                <option value="work">{t("aiDestinations.work")}</option>
-                <option value="school">{t("aiDestinations.school")}</option>
+                {destinationKinds.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {destinationKindLabel(kind, t)}
+                  </option>
+                ))}
               </SelectField>
+              <SelectField
+                disabled={!canEdit}
+                label={t("aiDestinations.optionKind")}
+                value={draft.option_kind}
+                onChange={(option_kind) => onUpdateDraft({ option_kind: option_kind as AISearchDestinationOptionKind })}
+              >
+                {optionKinds.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {optionKindLabel(kind)}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+
+            <div className="form-section-title">{t("aiDestinations.destinationProfile")}</div>
+            <div className="form-grid dense">
+              <InputField disabled={!canEdit} label={t("aiDestinations.displayName")} value={draft.name} onChange={(name) => onUpdateDraft({ name })} />
               <InputField
                 disabled={!canEdit}
-                label={t("aiDestinations.model")}
-                value={draft.model ?? ""}
-                onChange={(value) => onUpdateDraft({ model: value || null })}
+                label={t("aiDestinations.provider")}
+                value={draft.provider}
+                onChange={(provider) => onUpdateDraft({ provider })}
               />
-              <label className="field full">
-                <span>{t("aiDestinations.message")}</span>
-                <textarea
-                  disabled={!canEdit}
-                  value={draft.result.message}
-                  onChange={(event) => onUpdateResult({ message: event.target.value })}
-                />
-              </label>
+              <InputField
+                disabled={!canEdit}
+                label={t("aiDestinations.address")}
+                value={draft.address}
+                onChange={(address) => onUpdateDraft({ address })}
+              />
+              <InputField
+                disabled={!canEdit}
+                label={t("aiDestinations.subtitleField")}
+                value={draft.subtitle}
+                onChange={(subtitle) => onUpdateDraft({ subtitle })}
+              />
+              <NumberField
+                disabled={!canEdit}
+                label={t("aiDestinations.latitude")}
+                step={0.000001}
+                value={draft.latitude}
+                onChange={(latitude) => onUpdateDraft({ latitude })}
+              />
+              <NumberField
+                disabled={!canEdit}
+                label={t("aiDestinations.longitude")}
+                step={0.000001}
+                value={draft.longitude}
+                onChange={(longitude) => onUpdateDraft({ longitude })}
+              />
+              <NumberField
+                disabled={!canEdit}
+                label={t("aiDestinations.confidence")}
+                max={1}
+                min={0}
+                step={0.01}
+                value={draft.confidence}
+                onChange={(confidence) => onUpdateDraft({ confidence: confidence ?? 0 })}
+              />
             </div>
 
-            <div className="destination-options-header">
-              <div>
-                <div className="form-section-title">{t("aiDestinations.optionManager")}</div>
-                <p className="table-subtext">{t("aiDestinations.optionHint")}</p>
-              </div>
-              <button className="ghost-button" disabled={!canEdit} onClick={onAddOption} type="button">
-                <Plus size={16} />
-                {t("aiDestinations.addOffice")}
-              </button>
-            </div>
-
-            <div className="destination-option-list">
-              {options.length === 0 ? (
-                <div className="empty-state compact-empty-state">{t("aiDestinations.noOptions")}</div>
-              ) : (
-                options.map((option, index) => (
-                  <div className="destination-option-card" key={`${option.id}-${index}`}>
-                    <div className="destination-option-card-head">
-                      <strong>{option.name || t("aiDestinations.unnamedOffice")}</strong>
-                      <button className="icon-button danger" disabled={!canDelete && !canEdit} onClick={() => onDeleteOption(index)} type="button">
-                        <Trash2 size={15} />
-                      </button>
-                    </div>
-                    <div className="form-grid dense">
-                      <InputField
-                        disabled={!canEdit}
-                        label={t("aiDestinations.displayName")}
-                        value={option.name}
-                        onChange={(value) => onUpdateOption(index, { name: value })}
-                      />
-                      <SelectField
-                        disabled={!canEdit}
-                        label={t("aiDestinations.optionKind")}
-                        value={option.kind}
-                        onChange={(value) => onUpdateOption(index, { kind: value as AISearchDestinationOptionKind })}
-                      >
-                        {optionKinds.map((kind) => (
-                          <option key={kind} value={kind}>
-                            {kindLabel(kind)}
-                          </option>
-                        ))}
-                      </SelectField>
-                      <InputField
-                        disabled={!canEdit}
-                        label={t("aiDestinations.address")}
-                        value={option.address}
-                        onChange={(value) => onUpdateOption(index, { address: value })}
-                      />
-                      <InputField
-                        disabled={!canEdit}
-                        label={t("aiDestinations.subtitleField")}
-                        value={option.subtitle}
-                        onChange={(value) => onUpdateOption(index, { subtitle: value })}
-                      />
-                      <NumberField
-                        disabled={!canEdit}
-                        label={t("aiDestinations.confidence")}
-                        max={1}
-                        min={0}
-                        step={0.01}
-                        value={option.confidence}
-                        onChange={(value) => onUpdateOption(index, { confidence: value })}
-                      />
-                      <InputField
-                        disabled={!canEdit}
-                        label="ID"
-                        value={option.id}
-                        onChange={(value) => onUpdateOption(index, { id: value })}
-                      />
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            <TransitLineSelector
+              canEdit={canEdit}
+              lines={draft.nearby_transit_lines}
+              onChange={(nearby_transit_lines) => onUpdateDraft({ nearby_transit_lines })}
+              t={t}
+            />
           </section>
         </div>
 
         <footer className="drawer-footer">
-          <button className="danger-button" disabled={!canDelete} onClick={() => onDeleteQuery(draft)} type="button">
+          <button className="danger-button" disabled={!canDelete} onClick={() => onDelete(draft)} type="button">
             <Trash2 size={16} />
             {t("aiDestinations.deleteDestination")}
           </button>
@@ -589,15 +497,60 @@ function QueryDrawer({
   );
 }
 
-function OptionSummary({ options }: { options: AISearchDestinationOption[] }) {
-  if (options.length === 0) {
+function TransitLineSelector({
+  canEdit,
+  lines,
+  onChange,
+  t
+}: {
+  canEdit: boolean;
+  lines: string[];
+  onChange: (lines: string[]) => void;
+  t: (key: string, params?: Record<string, number | string>) => string;
+}) {
+  const selectedLines = useMemo(() => new Set(normalizeTransitLines(lines)), [lines]);
+
+  return (
+    <section className="choice-editor">
+      <div className="choice-editor-head">
+        <div>
+          <div className="form-section-title">{t("aiDestinations.transitLineManager")}</div>
+          <p className="table-subtext">{t("aiDestinations.transitLineHint")}</p>
+        </div>
+        <span>{selectedLines.size} {t("common.selected")}</span>
+      </div>
+      <div className="choice-grid transit-choice-grid">
+        {TRANSIT_LINE_OPTIONS.map((line) => (
+          <label className="check-option" key={line}>
+            <input
+              checked={selectedLines.has(line)}
+              disabled={!canEdit}
+              type="checkbox"
+              onChange={() => onChange(toggleTransitLine(lines, line))}
+            />
+            <span>{line}</span>
+          </label>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TransitLinePills({ lines }: { lines: string[] }) {
+  const normalizedLines = normalizeTransitLines(lines);
+
+  if (normalizedLines.length === 0) {
     return <span className="table-subtext">N/A</span>;
   }
 
   return (
-    <div className="option-summary">
-      <span className="count-pill">{options.length} offices</span>
-      <span className="table-subtext">{options.map((option) => option.name || option.address).join(" · ")}</span>
+    <div className="alias-summary">
+      {normalizedLines.map((line) => (
+        <span className="count-pill" key={line}>
+          <TrainFront size={12} />
+          {line}
+        </span>
+      ))}
     </div>
   );
 }
@@ -635,8 +588,8 @@ function NumberField({
   max?: number;
   min?: number;
   step?: number;
-  value: number;
-  onChange: (value: number) => void;
+  value: number | null;
+  onChange: (value: number | null) => void;
 }) {
   return (
     <label className="field">
@@ -647,8 +600,8 @@ function NumberField({
         min={min}
         step={step}
         type="number"
-        value={value}
-        onChange={(event) => onChange(event.target.value === "" ? 0 : Number(event.target.value))}
+        value={value ?? ""}
+        onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))}
       />
     </label>
   );
@@ -677,101 +630,90 @@ function SelectField({
   );
 }
 
-function handleScrollLoadMore(
-  event: UIEvent<HTMLElement>,
-  visibleCount: number,
-  totalCount: number,
-  setVisibleCount: Dispatch<SetStateAction<number>>,
-  batchSize: number
-) {
-  if (visibleCount >= totalCount) {
-    return;
-  }
-
-  const element = event.currentTarget;
-  const remainingScroll = element.scrollHeight - element.scrollTop - element.clientHeight;
-
-  if (remainingScroll > 180) {
-    return;
-  }
-
-  setVisibleCount((current) => Math.min(totalCount, current + batchSize));
-}
-
-function LoadMoreStatus({ shown, total }: { shown: number; total: number }) {
-  return (
-    <div className="load-more-status">
-      {shown >= total ? `Showing all ${total}` : `Showing ${shown} of ${total}. Scroll for more.`}
-    </div>
-  );
-}
-
-function normalizedQueryRow(row: AISearchDestinationQuery): AISearchDestinationQuery {
-  const result = row.result && typeof row.result === "object"
-    ? row.result
-    : { query: row.raw_query, options: [], message: "" };
-
+function normalizeDestinationRow(row: ResolvedCommuteDestination): ResolvedCommuteDestination {
   return {
     ...row,
-    raw_query: row.raw_query || result.query || row.query_normalized,
-    result: {
-      query: result.query || row.raw_query || row.query_normalized,
-      options: normalizedOptions(result.options),
-      message: result.message || ""
-    }
+    query: row.query ?? "",
+    place_id: row.place_id ?? "",
+    name: row.name ?? "",
+    address: row.address ?? "",
+    subtitle: row.subtitle ?? "",
+    option_kind: optionKinds.includes(row.option_kind) ? row.option_kind : "office",
+    latitude: nullableNumber(row.latitude),
+    longitude: nullableNumber(row.longitude),
+    nearby_transit_lines: normalizeTransitLines(row.nearby_transit_lines ?? []),
+    confidence: clampConfidence(Number(row.confidence ?? 0.75)),
+    provider: row.provider ?? "google_maps",
+    first_seen_at: row.first_seen_at ?? "",
+    last_resolved_at: row.last_resolved_at ?? ""
   };
 }
 
-function normalizedOptions(options: unknown): AISearchDestinationOption[] {
-  if (!Array.isArray(options)) {
-    return [];
+function destinationPayload(draft: DestinationDraft) {
+  return {
+    query: draft.query.trim(),
+    destination_kind: draft.destination_kind,
+    place_id: draft.place_id.trim(),
+    name: draft.name.trim(),
+    address: draft.address.trim(),
+    subtitle: draft.subtitle.trim(),
+    option_kind: draft.option_kind,
+    latitude: nullableNumber(draft.latitude),
+    longitude: nullableNumber(draft.longitude),
+    nearby_transit_lines: normalizeTransitLines(draft.nearby_transit_lines),
+    confidence: clampConfidence(draft.confidence),
+    provider: draft.provider.trim() || "manual-admin",
+    last_resolved_at: new Date().toISOString()
+  };
+}
+
+function sortDestinations(destinations: ResolvedCommuteDestination[]) {
+  return [...destinations].sort((first, second) => {
+    const dateSort = second.last_resolved_at.localeCompare(first.last_resolved_at);
+    return dateSort === 0 ? first.name.localeCompare(second.name) : dateSort;
+  });
+}
+
+function nullableNumber(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(Number(value))) {
+    return null;
   }
 
-  return options.map((option, index) => normalizedOption(option, index));
-}
-
-function normalizedOption(option: unknown, index: number): AISearchDestinationOption {
-  const value = (option && typeof option === "object" ? option : {}) as Partial<AISearchDestinationOption>;
-  const name = typeof value.name === "string" ? value.name : "";
-  const address = typeof value.address === "string" ? value.address : "";
-
-  return {
-    id: typeof value.id === "string" && value.id.trim() ? value.id : destinationOptionID(name, address, index),
-    name,
-    address,
-    subtitle: typeof value.subtitle === "string" ? value.subtitle : "",
-    kind: optionKinds.includes(value.kind as AISearchDestinationOptionKind)
-      ? (value.kind as AISearchDestinationOptionKind)
-      : "office",
-    confidence: clampConfidence(typeof value.confidence === "number" ? value.confidence : 0.8)
-  };
+  return Number(value);
 }
 
 function clampConfidence(value: number) {
   if (!Number.isFinite(value)) {
-    return 0.5;
+    return 0.75;
   }
 
   return Math.min(1, Math.max(0, value));
 }
 
-function normalizeDestinationQuery(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[\s\p{P}]+/gu, " ")
-    .trim();
+function formatConfidence(value: number) {
+  return `${Math.round(clampConfidence(value) * 100)}%`;
 }
 
-function destinationOptionID(name: string, address: string, index: number) {
-  const slug = `${name}-${address}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-
-  return slug || `office-${index + 1}`;
+function formatCoordinate(value: number | null) {
+  return value == null ? "N/A" : value.toFixed(5);
 }
 
-function kindLabel(kind: AISearchDestinationOptionKind) {
-  return kind.replaceAll("_", " ");
+function formatProvider(provider: string) {
+  if (provider === "google_maps") {
+    return "Google Maps";
+  }
+
+  if (provider === "manual-admin") {
+    return "Manual";
+  }
+
+  return provider.replaceAll("_", " ");
+}
+
+function destinationKindLabel(kind: AISearchDestinationKind, t: (key: string) => string) {
+  return kind === "school" ? t("aiDestinations.school") : t("aiDestinations.work");
+}
+
+function optionKindLabel(kind: AISearchDestinationOptionKind) {
+  return kind.charAt(0).toUpperCase() + kind.slice(1);
 }

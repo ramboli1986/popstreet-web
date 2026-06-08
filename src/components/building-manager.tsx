@@ -30,11 +30,25 @@ import {
   canEditInventory,
   formatDate,
   formatMoneyFromCents,
-  slugify,
-  stringArrayToInput,
-  toStringArray
+  slugify
 } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
+import {
+  buildingDescriptionLabelGroups,
+  buildingDescriptionLabelKey,
+  buildingDescriptionLabelOptions,
+  normalizeBuildingDescriptionLabel,
+  normalizeBuildingDescriptionLabels,
+  toggleBuildingDescriptionLabel
+} from "@/lib/building-description-labels";
+import {
+  normalizeUnitDescriptionLabel,
+  normalizeUnitDescriptionLabels,
+  toggleUnitDescriptionLabel,
+  unitDescriptionLabelGroups,
+  unitDescriptionLabelKey,
+  unitDescriptionLabelOptions
+} from "@/lib/unit-description-labels";
 import type {
   AccountProfile,
   Building,
@@ -77,6 +91,7 @@ const listingStatuses: ListingStatus[] = ["available", "pending", "unavailable",
 const buildingMediaBucket = "building-media";
 const acceptedBuildingImageTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const buildingImageKinds: BuildingImageKind[] = [
+  "avatar",
   "gallery",
   "exterior",
   "lobby",
@@ -757,6 +772,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       latitude: 40.742,
       longitude: -74,
       score: null,
+      convenience_score: 75,
+      activity_score: 55,
       summary: "",
       description_labels: [],
       cover_image_url: null,
@@ -1547,6 +1564,24 @@ function BuildingEditor({
           value={draft.score}
           onChange={(value) => updateDraft("score", value)}
         />
+        <NumberField
+          disabled={!canEdit}
+          label="Convenience score"
+          max={100}
+          min={0}
+          step="1"
+          value={draft.convenience_score}
+          onChange={(value) => updateDraft("convenience_score", value)}
+        />
+        <NumberField
+          disabled={!canEdit}
+          label="Activity score"
+          max={100}
+          min={0}
+          step="1"
+          value={draft.activity_score}
+          onChange={(value) => updateDraft("activity_score", value)}
+        />
       </div>
 
       <div className="form-section-title">Building details</div>
@@ -1598,11 +1633,10 @@ function BuildingEditor({
           value={draft.website ?? ""}
           onChange={(value) => updateDraft("website", value || null)}
         />
-        <InputField
-          disabled={!canEdit}
-          label="Description labels"
-          value={stringArrayToInput(draft.description_labels)}
-          onChange={(value) => updateDraft("description_labels", toStringArray(value))}
+        <BuildingDescriptionLabelSelector
+          canEdit={canEdit}
+          value={draft.description_labels}
+          onChange={(labels) => updateDraft("description_labels", labels)}
         />
         <label className="field full">
           <span>AI summary</span>
@@ -1638,7 +1672,7 @@ function BuildingEditor({
       <ImageCollectionEditor
         canEdit={canEdit}
         createImage={() => createBuildingImageDraft(draft.id, images.length)}
-        helpText="Building images are mixed into the detail gallery after unit photos. Use specific types for exterior, lobby, amenity, and neighborhood shots."
+        helpText="Avatar is used for the circular building image in the app. Other building images are mixed into the detail gallery after unit photos."
         images={images}
         kinds={buildingImageKinds}
         onChange={onImagesChange}
@@ -1646,6 +1680,109 @@ function BuildingEditor({
       />
 
     </section>
+  );
+}
+
+function BuildingDescriptionLabelSelector({
+  canEdit,
+  value,
+  onChange
+}: {
+  canEdit: boolean;
+  value: string[];
+  onChange: (labels: string[]) => void;
+}) {
+  const [customLabel, setCustomLabel] = useState("");
+  const labels = useMemo(() => normalizeBuildingDescriptionLabels(value), [value]);
+  const selectedLabelKeys = useMemo(() => new Set(labels.map(buildingDescriptionLabelKey)), [labels]);
+  const predefinedLabelKeys = useMemo(
+    () => new Set(buildingDescriptionLabelOptions.map((option) => buildingDescriptionLabelKey(option.value))),
+    []
+  );
+  const customLabels = useMemo(
+    () => labels.filter((label) => !predefinedLabelKeys.has(buildingDescriptionLabelKey(label))),
+    [labels, predefinedLabelKeys]
+  );
+
+  function toggleLabel(label: string) {
+    onChange(toggleBuildingDescriptionLabel(labels, label));
+  }
+
+  function addCustomLabel() {
+    const nextLabel = normalizeBuildingDescriptionLabel(customLabel);
+
+    if (!nextLabel) {
+      setCustomLabel("");
+      return;
+    }
+
+    onChange(normalizeBuildingDescriptionLabels([...labels, nextLabel]));
+    setCustomLabel("");
+  }
+
+  return (
+    <div className="description-label-selector">
+      <div className="choice-editor-head">
+        <div className="form-section-title">Description labels</div>
+        <span>{labels.length} selected</span>
+      </div>
+
+      {buildingDescriptionLabelGroups.map((group) => (
+        <div className="description-label-group" key={group.title}>
+          <div className="description-label-group-title">{group.title}</div>
+          <div className="choice-grid description-label-grid">
+            {group.options.map((option) => {
+              const optionKey = buildingDescriptionLabelKey(option.value);
+
+              return (
+                <label className="check-option description-label-option" key={option.value}>
+                  <input
+                    checked={selectedLabelKeys.has(optionKey)}
+                    disabled={!canEdit}
+                    type="checkbox"
+                    onChange={() => toggleLabel(option.value)}
+                  />
+                  <span>{option.value}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {customLabels.length > 0 ? (
+        <div className="description-label-group">
+          <div className="description-label-group-title">Custom</div>
+          <div className="choice-grid description-label-grid">
+            {customLabels.map((label) => (
+              <label className="check-option description-label-option" key={buildingDescriptionLabelKey(label)}>
+                <input checked disabled={!canEdit} type="checkbox" onChange={() => toggleLabel(label)} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="choice-add-row">
+        <input
+          disabled={!canEdit}
+          placeholder="Custom label"
+          value={customLabel}
+          onChange={(event) => setCustomLabel(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              addCustomLabel();
+            }
+          }}
+        />
+        <button className="ghost-button compact-button" disabled={!canEdit || !customLabel.trim()} onClick={addCustomLabel} type="button">
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1818,6 +1955,109 @@ function BuildingServiceSelector({
         })}
       </div>
     </section>
+  );
+}
+
+function UnitDescriptionLabelSelector({
+  canEdit,
+  value,
+  onChange
+}: {
+  canEdit: boolean;
+  value: string[];
+  onChange: (labels: string[]) => void;
+}) {
+  const [customLabel, setCustomLabel] = useState("");
+  const labels = useMemo(() => normalizeUnitDescriptionLabels(value), [value]);
+  const selectedLabelKeys = useMemo(() => new Set(labels.map(unitDescriptionLabelKey)), [labels]);
+  const predefinedLabelKeys = useMemo(
+    () => new Set(unitDescriptionLabelOptions.map((option) => unitDescriptionLabelKey(option.value))),
+    []
+  );
+  const customLabels = useMemo(
+    () => labels.filter((label) => !predefinedLabelKeys.has(unitDescriptionLabelKey(label))),
+    [labels, predefinedLabelKeys]
+  );
+
+  function toggleLabel(label: string) {
+    onChange(toggleUnitDescriptionLabel(labels, label));
+  }
+
+  function addCustomLabel() {
+    const nextLabel = normalizeUnitDescriptionLabel(customLabel);
+
+    if (!nextLabel) {
+      setCustomLabel("");
+      return;
+    }
+
+    onChange(normalizeUnitDescriptionLabels([...labels, nextLabel]));
+    setCustomLabel("");
+  }
+
+  return (
+    <div className="description-label-selector">
+      <div className="choice-editor-head">
+        <div className="form-section-title">Description labels</div>
+        <span>{labels.length} selected</span>
+      </div>
+
+      {unitDescriptionLabelGroups.map((group) => (
+        <div className="description-label-group" key={group.title}>
+          <div className="description-label-group-title">{group.title}</div>
+          <div className="choice-grid description-label-grid">
+            {group.options.map((option) => {
+              const optionKey = unitDescriptionLabelKey(option.value);
+
+              return (
+                <label className="check-option description-label-option" key={option.value}>
+                  <input
+                    checked={selectedLabelKeys.has(optionKey)}
+                    disabled={!canEdit}
+                    type="checkbox"
+                    onChange={() => toggleLabel(option.value)}
+                  />
+                  <span>{option.value}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {customLabels.length > 0 ? (
+        <div className="description-label-group">
+          <div className="description-label-group-title">Custom</div>
+          <div className="choice-grid description-label-grid">
+            {customLabels.map((label) => (
+              <label className="check-option description-label-option" key={unitDescriptionLabelKey(label)}>
+                <input checked disabled={!canEdit} type="checkbox" onChange={() => toggleLabel(label)} />
+                <span>{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="choice-add-row">
+        <input
+          disabled={!canEdit}
+          placeholder="Custom label"
+          value={customLabel}
+          onChange={(event) => setCustomLabel(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              addCustomLabel();
+            }
+          }}
+        />
+        <button className="ghost-button compact-button" disabled={!canEdit || !customLabel.trim()} onClick={addCustomLabel} type="button">
+          <Plus size={14} />
+          Add
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -2285,6 +2525,7 @@ function UnitEditorDialog({
       return;
     }
 
+    const descriptionLabels = normalizeUnitDescriptionLabels(nextDraft.description_labels);
     const unitPayload = {
       building_id: buildingID,
       unit_number: nextDraft.unit_number,
@@ -2294,7 +2535,7 @@ function UnitEditorDialog({
       bathroom_count: nextDraft.bathroom_count,
       sqft: nextDraft.sqft,
       floor: nextDraft.floor,
-      description_labels: nextDraft.description_labels,
+      description_labels: descriptionLabels,
       application_url: normalizeApplicationURL(nextDraft.application_url)
     };
 
@@ -2495,11 +2736,10 @@ function UnitEditorDialog({
                 value={draft.floor}
                 onChange={(value) => setDraft((current) => ({ ...current, floor: value == null ? null : Math.round(value) }))}
               />
-              <InputField
-                disabled={!canEdit}
-                label="Description labels"
-                value={stringArrayToInput(draft.description_labels)}
-                onChange={(value) => setDraft((current) => ({ ...current, description_labels: toStringArray(value) }))}
+              <UnitDescriptionLabelSelector
+                canEdit={canEdit}
+                value={draft.description_labels}
+                onChange={(labels) => setDraft((current) => ({ ...current, description_labels: labels }))}
               />
             </div>
           </section>
@@ -2931,19 +3171,25 @@ function NumberField({
   value,
   onChange,
   disabled,
-  step = "1"
+  step = "1",
+  min,
+  max
 }: {
   label: string;
   value: number | null;
   onChange: (value: number | null) => void;
   disabled?: boolean;
   step?: string;
+  min?: number;
+  max?: number;
 }) {
   return (
     <label className="field">
       <span>{label}</span>
       <input
         disabled={disabled}
+        max={max}
+        min={min}
         step={step}
         type="number"
         value={value ?? ""}
@@ -3294,8 +3540,10 @@ function buildingPayload(building: Building, images: BuildingImage[]) {
     latitude: building.latitude,
     longitude: building.longitude,
     score: building.score,
+    convenience_score: scoreInputValue(building.convenience_score, 70),
+    activity_score: scoreInputValue(building.activity_score, 50),
     summary: building.summary,
-    description_labels: building.description_labels,
+    description_labels: normalizeBuildingDescriptionLabels(building.description_labels),
     cover_image_url: coverImageURLFromImages(images),
     is_active: building.is_active,
     year_built: building.year_built,
@@ -3306,6 +3554,11 @@ function buildingPayload(building: Building, images: BuildingImage[]) {
     website: building.website,
     area: building.area
   };
+}
+
+function scoreInputValue(value: number | null, fallback: number) {
+  const numericValue = value == null || Number.isNaN(value) ? fallback : value;
+  return Math.max(0, Math.min(100, numericValue));
 }
 
 async function syncBuildingImages(buildingID: string, images: BuildingImage[]) {

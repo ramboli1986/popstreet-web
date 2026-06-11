@@ -201,7 +201,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [publicationUnitID, setPublicationUnitID] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
-  const [areaFilter, setAreaFilter] = useState("all");
+  const [locationFilter, setLocationFilter] = useState("all");
   const [unitSearch, setUnitSearch] = useState("");
   const [unitBuildingFilter, setUnitBuildingFilter] = useState("all");
   const [unitStatusFilter, setUnitStatusFilter] = useState<UnitStatusFilter>("listed");
@@ -344,7 +344,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
   useEffect(() => {
     setVisibleBuildingCount(buildingBatchSize);
-  }, [areaFilter, companyFilter, search]);
+  }, [companyFilter, locationFilter, search]);
 
   useEffect(() => {
     setVisibleUnitCount(unitBatchSize);
@@ -401,13 +401,12 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     return nextBuildingsByID;
   }, [buildings]);
 
-  const areaOptions = useMemo(() => {
+  const locationOptions = useMemo(() => {
     const labels = new Set<string>();
 
     buildings.forEach((building) => {
-      const label = building.area || building.neighborhoods?.name || building.city;
-      if (label) {
-        labels.add(label);
+      if (building.city) {
+        labels.add(building.city);
       }
     });
 
@@ -475,16 +474,16 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       const areaLabel = building.area || building.neighborhoods?.name || building.city;
       const companyName = buildingCompanyName(building);
       const matchesCompany = companyFilter === "all" || buildingCompanyFilterValue(building) === companyFilter;
-      const matchesArea = areaFilter === "all" || areaLabel === areaFilter;
+      const matchesLocation = locationFilter === "all" || building.city === locationFilter;
       const matchesSearch =
         query.length === 0 ||
         [building.name, building.address, building.full_address, areaLabel, companyName, building.city, building.state]
           .filter(Boolean)
           .some((value) => value!.toLowerCase().includes(query));
 
-      return matchesCompany && matchesArea && matchesSearch;
+      return matchesCompany && matchesLocation && matchesSearch;
     });
-  }, [areaFilter, buildings, companyFilter, search]);
+  }, [buildings, companyFilter, locationFilter, search]);
 
   const filteredAvailableUnitCount = useMemo(
     () =>
@@ -1246,11 +1245,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               </option>
             ))}
           </select>
-          <select value={areaFilter} onChange={(event) => setAreaFilter(event.target.value)}>
+          <select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}>
             <option value="all">{t("manager.allLocations")}</option>
-            {areaOptions.map((area) => (
-              <option key={area} value={area}>
-                {area}
+            {locationOptions.map((location) => (
+              <option key={location} value={location}>
+                {location}
               </option>
             ))}
           </select>
@@ -1510,6 +1509,93 @@ function BuildingEditor({
   onTransitLinesChange: (lines: BuildingTransitLine[]) => void;
   updateDraft: <K extends keyof Building>(key: K, value: Building[K]) => void;
 }) {
+  const cityOptions = useMemo(() => {
+    const cities = new Set<string>();
+
+    neighborhoods.forEach((neighborhood) => {
+      if (neighborhood.city) {
+        cities.add(neighborhood.city);
+      }
+    });
+
+    if (draft.city) {
+      cities.add(draft.city);
+    }
+
+    return Array.from(cities).sort((first, second) => first.localeCompare(second));
+  }, [draft.city, neighborhoods]);
+
+  const areaOptionsForSelectedCity = useMemo(() => {
+    const options = neighborhoods
+      .filter((neighborhood) => neighborhood.city === draft.city)
+      .map((neighborhood) => ({
+        area: neighborhood.name,
+        id: neighborhood.id,
+        label: neighborhood.name,
+        state: neighborhood.state,
+        value: neighborhood.id
+      }))
+      .sort((first, second) => first.label.localeCompare(second.label));
+
+    const hasDraftArea =
+      draft.area == null ||
+      draft.area.length === 0 ||
+      options.some((option) => option.area === draft.area || option.id === draft.neighborhood_id);
+
+    if (!hasDraftArea && draft.area) {
+      options.push({
+        area: draft.area,
+        id: draft.neighborhood_id ?? "",
+        label: draft.area,
+        state: draft.state,
+        value: `custom:${draft.area}`
+      });
+    }
+
+    return options;
+  }, [draft.area, draft.city, draft.neighborhood_id, draft.state, neighborhoods]);
+
+  const selectedAreaValue =
+    areaOptionsForSelectedCity.find((option) => option.id && option.id === draft.neighborhood_id)?.value ??
+    areaOptionsForSelectedCity.find((option) => option.area === draft.area)?.value ??
+    "";
+
+  function updateCity(city: string) {
+    const cityNeighborhoods = neighborhoods.filter((neighborhood) => neighborhood.city === city);
+    const nextState = cityNeighborhoods[0]?.state;
+    const keepsCurrentArea = cityNeighborhoods.some(
+      (neighborhood) => neighborhood.id === draft.neighborhood_id || neighborhood.name === draft.area
+    );
+
+    updateDraft("city", city);
+
+    if (nextState && nextState !== draft.state) {
+      updateDraft("state", nextState);
+    }
+
+    if (!keepsCurrentArea) {
+      updateDraft("area", null);
+      updateDraft("neighborhood_id", null);
+    }
+  }
+
+  function updateArea(value: string) {
+    const selectedArea = areaOptionsForSelectedCity.find((option) => option.value === value);
+
+    if (!selectedArea) {
+      updateDraft("area", null);
+      updateDraft("neighborhood_id", null);
+      return;
+    }
+
+    updateDraft("area", selectedArea.area);
+    updateDraft("neighborhood_id", selectedArea.id || null);
+
+    if (selectedArea.state && selectedArea.state !== draft.state) {
+      updateDraft("state", selectedArea.state);
+    }
+  }
+
   return (
     <section className="editor-form">
       <div className="form-section-title">Core profile</div>
@@ -1533,23 +1619,27 @@ function BuildingEditor({
           value={draft.full_address}
           onChange={(value) => updateDraft("full_address", value)}
         />
-        <InputField disabled={!canEdit} label="Area" value={draft.area ?? ""} onChange={(value) => updateDraft("area", value)} />
         <label className="field">
-          <span>Neighborhood</span>
-          <select
-            disabled={!canEdit}
-            value={draft.neighborhood_id ?? ""}
-            onChange={(event) => updateDraft("neighborhood_id", event.target.value || null)}
-          >
-            <option value="">None</option>
-            {neighborhoods.map((neighborhood) => (
-              <option key={neighborhood.id} value={neighborhood.id}>
-                {neighborhood.name}, {neighborhood.state}
+          <span>City</span>
+          <select disabled={!canEdit} value={draft.city} onChange={(event) => updateCity(event.target.value)}>
+            {cityOptions.map((city) => (
+              <option key={city} value={city}>
+                {city}
               </option>
             ))}
           </select>
         </label>
-        <InputField disabled={!canEdit} label="City" value={draft.city} onChange={(value) => updateDraft("city", value)} />
+        <label className="field">
+          <span>Area</span>
+          <select disabled={!canEdit} value={selectedAreaValue} onChange={(event) => updateArea(event.target.value)}>
+            <option value="">None</option>
+            {areaOptionsForSelectedCity.map((area) => (
+              <option key={area.value} value={area.value}>
+                {area.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <InputField disabled={!canEdit} label="State" value={draft.state} onChange={(value) => updateDraft("state", value)} />
         <InputField
           disabled={!canEdit}

@@ -1273,14 +1273,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             <option value="updated">{t("manager.sortRecentlyUpdated")}</option>
             <option value="company">{t("manager.sortCompany")}</option>
           </select>
-          <div className="toolbar-stat">
-            <strong>{filteredBuildings.length}</strong>
-            <span>{t("common.buildings")}</span>
-          </div>
-          <div className="toolbar-stat">
-            <strong>{filteredAvailableUnitCount}</strong>
-            <span>{t("manager.availableUnits")}</span>
-          </div>
         </section>
       )}
 

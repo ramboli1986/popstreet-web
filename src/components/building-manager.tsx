@@ -81,6 +81,7 @@ type BuildingMetric = {
 type UnitStatusFilter = "all" | "listed" | "unlisted";
 type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 type BuildingUnitListFilter = "all" | "listed" | "unlisted";
+type BuildingSortKey = "updated" | "company";
 type BuildingServiceOption = {
   title: string;
   label: string;
@@ -202,6 +203,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
+  const [buildingSortKey, setBuildingSortKey] = useState<BuildingSortKey>("updated");
   const [unitSearch, setUnitSearch] = useState("");
   const [unitBuildingFilter, setUnitBuildingFilter] = useState("all");
   const [unitStatusFilter, setUnitStatusFilter] = useState<UnitStatusFilter>("listed");
@@ -344,7 +346,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
   useEffect(() => {
     setVisibleBuildingCount(buildingBatchSize);
-  }, [companyFilter, locationFilter, search]);
+  }, [buildingSortKey, companyFilter, locationFilter, search]);
 
   useEffect(() => {
     setVisibleUnitCount(unitBatchSize);
@@ -482,14 +484,25 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           .some((value) => value!.toLowerCase().includes(query));
 
       return matchesCompany && matchesLocation && matchesSearch;
-    });
-  }, [buildings, companyFilter, locationFilter, search]);
+    }).sort((first, second) => compareBuildingsForSort(first, second, buildingSortKey));
+  }, [buildingSortKey, buildings, companyFilter, locationFilter, search]);
 
   const filteredAvailableUnitCount = useMemo(
     () =>
       filteredBuildings.reduce((total, building) => total + (buildingMetrics.get(building.id)?.availableCount ?? 0), 0),
     [buildingMetrics, filteredBuildings]
   );
+  const filteredCompanyCount = useMemo(() => {
+    const companyValues = new Set<string>();
+
+    filteredBuildings.forEach((building) => {
+      if (buildingCompanyName(building) !== "Unassigned") {
+        companyValues.add(buildingCompanyFilterValue(building));
+      }
+    });
+
+    return companyValues.size;
+  }, [filteredBuildings]);
   const geocodedBuildings = useMemo(
     () => buildings.filter((building) => Number.isFinite(building.latitude) && Number.isFinite(building.longitude)),
     [buildings]
@@ -1019,9 +1032,9 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const pageCopy = {
     building: {
       eyebrow: t("manager.buildingsEyebrow"),
-      title: t("manager.buildingsTitle", { count: buildings.length.toLocaleString(locale) }),
+      title: t("manager.buildingsTitle", { count: filteredBuildings.length.toLocaleString(locale) }),
       subtitle: t("manager.buildingsSubtitle", {
-        companies: companyOptions.length.toLocaleString(locale),
+        companies: filteredCompanyCount.toLocaleString(locale),
         available: filteredAvailableUnitCount.toLocaleString(locale)
       })
     },
@@ -1253,6 +1266,13 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               </option>
             ))}
           </select>
+          <select
+            value={buildingSortKey}
+            onChange={(event) => setBuildingSortKey(event.target.value as BuildingSortKey)}
+          >
+            <option value="updated">{t("manager.sortRecentlyUpdated")}</option>
+            <option value="company">{t("manager.sortCompany")}</option>
+          </select>
           <div className="toolbar-stat">
             <strong>{filteredBuildings.length}</strong>
             <span>{t("common.buildings")}</span>
@@ -1293,6 +1313,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               filteredCount={filteredBuildings.length}
               metrics={buildingMetrics}
               selectedBuilding={selectedBuilding}
+              sortKey={buildingSortKey}
               onLoadMore={(event) =>
                 handleScrollLoadMore(
                   event,
@@ -1302,6 +1323,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
                   buildingBatchSize
                 )
               }
+              onSortChange={setBuildingSortKey}
               onOpen={openBuildingEditor}
               onOpenUnits={openUnitList}
             />
@@ -1368,7 +1390,9 @@ function BuildingTable({
   filteredCount,
   metrics,
   selectedBuilding,
+  sortKey,
   onLoadMore,
+  onSortChange,
   onOpen,
   onOpenUnits,
 }: {
@@ -1377,7 +1401,9 @@ function BuildingTable({
   filteredCount: number;
   metrics: Map<string, BuildingMetric>;
   selectedBuilding: Building | null;
+  sortKey: BuildingSortKey;
   onLoadMore: (event: UIEvent<HTMLDivElement>) => void;
+  onSortChange: (sortKey: BuildingSortKey) => void;
   onOpen: (building: Building) => void;
   onOpenUnits: (building: Building) => void;
 }) {
@@ -1393,7 +1419,16 @@ function BuildingTable({
             <th>No.</th>
             <th>Building</th>
             <th>Location</th>
-            <th>Company</th>
+            <th>
+              <button
+                className="table-header-sort"
+                onClick={() => onSortChange("company")}
+                type="button"
+              >
+                Company
+                {sortKey === "company" ? <ArrowDown size={13} /> : null}
+              </button>
+            </th>
             <th>Available</th>
             <th>Lowest net</th>
             <th>Updated</th>
@@ -3383,6 +3418,22 @@ function buildingListAreaTitle(building: Building) {
 
 function buildingCompanyName(building: Building) {
   return building.management_companies?.name ?? building.management_company ?? "Unassigned";
+}
+
+function compareBuildingsForSort(first: Building, second: Building, sortKey: BuildingSortKey) {
+  if (sortKey === "company") {
+    return (
+      buildingCompanyName(first).localeCompare(buildingCompanyName(second)) ||
+      first.name.localeCompare(second.name) ||
+      first.address.localeCompare(second.address)
+    );
+  }
+
+  return (
+    second.updated_at.localeCompare(first.updated_at) ||
+    first.name.localeCompare(second.name) ||
+    first.address.localeCompare(second.address)
+  );
 }
 
 function buildingCompanyFilterValue(building: Building) {

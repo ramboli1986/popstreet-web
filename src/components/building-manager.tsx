@@ -1439,7 +1439,7 @@ function BuildingTable({
                   <div className="table-subtext">{building.address}</div>
                 </td>
                 <td>
-                  <strong>{building.area || building.neighborhoods?.name || building.city}</strong>
+                  <strong>{buildingListAreaTitle(building)}</strong>
                   <div className="table-subtext">
                     {building.city}, {building.state}
                   </div>
@@ -3367,6 +3367,18 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 
 function buildingAreaLabel(building: Building) {
   return building.area || building.neighborhoods?.name || building.city || "Other";
+}
+
+function buildingListAreaTitle(building: Building) {
+  if (building.area && building.area !== building.city) {
+    return building.area;
+  }
+
+  if (building.neighborhoods?.name && building.neighborhoods.name !== building.city) {
+    return building.neighborhoods.name;
+  }
+
+  return "No area";
 }
 
 function buildingCompanyName(building: Building) {

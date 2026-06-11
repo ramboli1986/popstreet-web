@@ -3405,15 +3405,7 @@ function buildingAreaLabel(building: Building) {
 }
 
 function buildingListAreaTitle(building: Building) {
-  if (building.area && building.area !== building.city) {
-    return building.area;
-  }
-
-  if (building.neighborhoods?.name && building.neighborhoods.name !== building.city) {
-    return building.neighborhoods.name;
-  }
-
-  return "No area";
+  return building.area || building.neighborhoods?.name || "No area";
 }
 
 function buildingCompanyName(building: Building) {

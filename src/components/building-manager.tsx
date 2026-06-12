@@ -49,6 +49,11 @@ import {
   unitDescriptionLabelKey,
   unitDescriptionLabelOptions
 } from "@/lib/unit-description-labels";
+import {
+  buildingLocationFilterOptions,
+  buildingLocationFilterValueExists,
+  buildingMatchesLocationFilter
+} from "@/lib/building-market-groups";
 import type {
   AccountProfile,
   Building,
@@ -403,18 +408,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     return nextBuildingsByID;
   }, [buildings]);
 
-  const locationOptions = useMemo(() => {
-    const labels = new Set<string>();
-
-    buildings.forEach((building) => {
-      if (building.city) {
-        labels.add(building.city);
-      }
-    });
-
-    return Array.from(labels).sort((first, second) => first.localeCompare(second));
-  }, [buildings]);
-
   const companyOptions = useMemo(() => {
     const options = new Map<string, string>();
 
@@ -469,23 +462,39 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     });
   }, [mapAreaOptions]);
 
-  const filteredBuildings = useMemo(() => {
+  const buildingsMatchingNonLocationFilters = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     return buildings.filter((building) => {
       const areaLabel = building.area || building.neighborhoods?.name || building.city;
       const companyName = buildingCompanyName(building);
       const matchesCompany = companyFilter === "all" || buildingCompanyFilterValue(building) === companyFilter;
-      const matchesLocation = locationFilter === "all" || building.city === locationFilter;
       const matchesSearch =
         query.length === 0 ||
         [building.name, building.address, building.full_address, areaLabel, companyName, building.city, building.state]
           .filter(Boolean)
           .some((value) => value!.toLowerCase().includes(query));
 
-      return matchesCompany && matchesLocation && matchesSearch;
-    }).sort((first, second) => compareBuildingsForSort(first, second, buildingSortKey));
-  }, [buildingSortKey, buildings, companyFilter, locationFilter, search]);
+      return matchesCompany && matchesSearch;
+    });
+  }, [buildings, companyFilter, search]);
+
+  const locationOptions = useMemo(
+    () => buildingLocationFilterOptions(buildingsMatchingNonLocationFilters),
+    [buildingsMatchingNonLocationFilters]
+  );
+
+  useEffect(() => {
+    if (!buildingLocationFilterValueExists(locationOptions, locationFilter)) {
+      setLocationFilter("all");
+    }
+  }, [locationFilter, locationOptions]);
+
+  const filteredBuildings = useMemo(() => {
+    return buildingsMatchingNonLocationFilters
+      .filter((building) => buildingMatchesLocationFilter(building, locationFilter))
+      .sort((first, second) => compareBuildingsForSort(first, second, buildingSortKey));
+  }, [buildingSortKey, buildingsMatchingNonLocationFilters, locationFilter]);
 
   const filteredAvailableUnitCount = useMemo(
     () =>
@@ -1259,10 +1268,13 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             ))}
           </select>
           <select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}>
-            <option value="all">{t("manager.allLocations")}</option>
+            <option value="all">
+              {t("manager.allLocations")} ({buildingsMatchingNonLocationFilters.length.toLocaleString(locale)})
+            </option>
             {locationOptions.map((location) => (
-              <option key={location} value={location}>
-                {location}
+              <option key={location.value} value={location.value}>
+                {location.depth === 1 ? "    " : ""}
+                {location.label} ({location.count.toLocaleString(locale)})
               </option>
             ))}
           </select>

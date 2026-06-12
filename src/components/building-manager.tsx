@@ -53,11 +53,16 @@ import {
   unitDescriptionLabelOptions
 } from "@/lib/unit-description-labels";
 import {
+  buildingMapRegionFor,
+  buildingMapRegionOptions,
+  buildingMatchesMapRegion,
   buildingLocationFilterOptions,
   buildingLocationFilterOptionDisplay,
   buildingLocationFilterOptionLabel,
   buildingLocationFilterValueExists,
-  buildingMatchesLocationFilter
+  buildingMatchesLocationFilter,
+  canonicalBuildingAreaKey,
+  canonicalBuildingAreaLabel
 } from "@/lib/building-market-groups";
 import type {
   AccountProfile,
@@ -79,6 +84,15 @@ import type {
 type BuildingManagerProps = {
   profile: AccountProfile | null;
   mode: "building" | "units" | "map";
+};
+
+type BuildingAreaSelectOption = {
+  area: string;
+  id: string | null;
+  label: string;
+  rawName: string;
+  state: string | null;
+  value: string;
 };
 
 type UnitIndex = Pick<Unit, "id" | "building_id">;
@@ -168,15 +182,16 @@ const leaseMonthOptions = Array.from({ length: 15 }, (_item, index) => index + 1
 const freeMonthOptions = Array.from({ length: 13 }, (_item, index) => index * 0.5);
 const buildingBatchSize = 25;
 const unitBatchSize = 25;
-const preferredMapAreas = [
-  "Jersey City",
-  "LIC",
-  "Brooklyn",
-  "Downtown Manhattan",
-  "Midtown Manhattan",
-  "Upper West Side",
-  "Upper East Side",
-  "Flushing"
+const preferredMapRegionValues = [
+  "parent:nj",
+  "child:manhattan:downtown-manhattan",
+  "child:manhattan:midtown-manhattan",
+  "child:manhattan:upper-east-side",
+  "child:manhattan:upper-west-side",
+  "child:queens:lic",
+  "child:queens:astoria",
+  "parent:brooklyn",
+  "parent:other"
 ];
 const mapAreaPalette = [
   "#4da3df",
@@ -428,35 +443,20 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       .sort((first, second) => first.label.localeCompare(second.label));
   }, [buildings]);
 
+  const geocodedBuildings = useMemo(
+    () => buildings.filter((building) => Number.isFinite(building.latitude) && Number.isFinite(building.longitude)),
+    [buildings]
+  );
+
   const mapAreaOptions = useMemo(() => {
-    const labels = new Set<string>();
-
-    buildings.forEach((building) => {
-      const label = buildingAreaLabel(building);
-      if (label) {
-        labels.add(label);
-      }
-    });
-
-    const sorted = Array.from(labels).sort((first, second) => {
-      const firstPreferredIndex = preferredMapAreas.indexOf(first);
-      const secondPreferredIndex = preferredMapAreas.indexOf(second);
-
-      if (firstPreferredIndex !== -1 || secondPreferredIndex !== -1) {
-        return (firstPreferredIndex === -1 ? 999 : firstPreferredIndex) - (secondPreferredIndex === -1 ? 999 : secondPreferredIndex);
-      }
-
-      return first.localeCompare(second);
-    });
-
-    return sorted.map((area, index) => ({
-      area,
-      color: areaColor(area, index)
+    return buildingMapRegionOptions(geocodedBuildings).map((option, index) => ({
+      ...option,
+      color: areaColor(option.value, index)
     }));
-  }, [buildings]);
+  }, [geocodedBuildings]);
 
   const mapAreaColors = useMemo(
-    () => new Map(mapAreaOptions.map((option) => [option.area, option.color])),
+    () => new Map(mapAreaOptions.map((option) => [option.value, option.color])),
     [mapAreaOptions]
   );
 
@@ -466,7 +466,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         return current;
       }
 
-      return mapAreaOptions.some((option) => option.area === current) ? current : "all";
+      return mapAreaOptions.some((option) => option.value === current) ? current : "all";
     });
   }, [mapAreaOptions]);
 
@@ -474,7 +474,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     const query = search.trim().toLowerCase();
 
     return buildings.filter((building) => {
-      const areaLabel = building.area || building.neighborhoods?.name || building.city;
+      const areaLabel = buildingAreaLabel(building);
       const companyName = buildingCompanyName(building);
       const matchesCompany = companyFilter === "all" || buildingCompanyFilterValue(building) === companyFilter;
       const matchesSearch =
@@ -556,15 +556,11 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
     return companyValues.size;
   }, [filteredBuildings]);
-  const geocodedBuildings = useMemo(
-    () => buildings.filter((building) => Number.isFinite(building.latitude) && Number.isFinite(building.longitude)),
-    [buildings]
-  );
   const visibleMapBuildings = useMemo(
     () =>
       selectedMapArea === "all"
         ? geocodedBuildings
-        : geocodedBuildings.filter((building) => buildingAreaLabel(building) === selectedMapArea),
+        : geocodedBuildings.filter((building) => buildingMatchesMapRegion(building, selectedMapArea)),
     [geocodedBuildings, selectedMapArea]
   );
 
@@ -1074,7 +1070,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   function selectMapArea(area: string) {
     setSelectedMapArea(area);
     setSelectedBuilding((building) => {
-      if (!building || area === "all" || buildingAreaLabel(building) === area) {
+      if (!building || buildingMatchesMapRegion(building, area)) {
         return building;
       }
 
@@ -1138,18 +1134,18 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
                 {t("manager.allAreas")}
               </button>
               {mapAreaOptions.map((option) => {
-                const isActive = selectedMapArea === option.area;
+                const isActive = selectedMapArea === option.value;
 
                 return (
                   <button
                     className={`map-area-chip ${isActive ? "active" : ""}`}
-                    key={option.area}
-                    onClick={() => selectMapArea(option.area)}
+                    key={option.value}
+                    onClick={() => selectMapArea(option.value)}
                     style={{ "--area-color": option.color } as CSSProperties}
                     type="button"
                   >
                     <span />
-                    {option.area}
+                    {option.label}
                   </button>
                 );
               })}
@@ -1182,7 +1178,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
                 )}
               </div>
               <div className="map-selection-copy">
-                <span style={{ background: mapAreaColors.get(buildingAreaLabel(selectedBuilding)) }} />
+                <span style={{ background: mapAreaColors.get(buildingMapRegionFor(selectedBuilding).value) }} />
                 <strong>{selectedBuilding.name}</strong>
                 <small>
                   {buildingAreaLabel(selectedBuilding)} · {selectedBuilding.city}, {selectedBuilding.state}
@@ -1662,45 +1658,22 @@ function BuildingEditor({
   }, [draft.city, neighborhoods]);
 
   const areaOptionsForSelectedCity = useMemo(() => {
-    const options = neighborhoods
-      .filter((neighborhood) => neighborhood.city === draft.city)
-      .map((neighborhood) => ({
-        area: neighborhood.name,
-        id: neighborhood.id,
-        label: neighborhood.name,
-        state: neighborhood.state,
-        value: neighborhood.id
-      }))
-      .sort((first, second) => first.label.localeCompare(second.label));
-
-    const hasDraftArea =
-      draft.area == null ||
-      draft.area.length === 0 ||
-      options.some((option) => option.area === draft.area || option.id === draft.neighborhood_id);
-
-    if (!hasDraftArea && draft.area) {
-      options.push({
-        area: draft.area,
-        id: draft.neighborhood_id ?? "",
-        label: draft.area,
-        state: draft.state,
-        value: `custom:${draft.area}`
-      });
-    }
-
-    return options;
+    return buildingAreaOptionsForCity(neighborhoods, draft.city, draft.area, draft.neighborhood_id, draft.state);
   }, [draft.area, draft.city, draft.neighborhood_id, draft.state, neighborhoods]);
 
+  const selectedDraftArea = canonicalBuildingAreaLabel(draft.area, draft.city, draft.state);
   const selectedAreaValue =
+    areaOptionsForSelectedCity.find((option) => option.area === selectedDraftArea)?.value ??
     areaOptionsForSelectedCity.find((option) => option.id && option.id === draft.neighborhood_id)?.value ??
-    areaOptionsForSelectedCity.find((option) => option.area === draft.area)?.value ??
     "";
 
   function updateCity(city: string) {
     const cityNeighborhoods = neighborhoods.filter((neighborhood) => neighborhood.city === city);
     const nextState = cityNeighborhoods[0]?.state;
-    const keepsCurrentArea = cityNeighborhoods.some(
-      (neighborhood) => neighborhood.id === draft.neighborhood_id || neighborhood.name === draft.area
+    const nextAreaOptions = buildingAreaOptionsForCity(neighborhoods, city, draft.area, draft.neighborhood_id, nextState ?? draft.state);
+    const currentAreaForNextCity = canonicalBuildingAreaLabel(draft.area, city, nextState ?? draft.state);
+    const keepsCurrentArea = nextAreaOptions.some(
+      (option) => option.id === draft.neighborhood_id || (currentAreaForNextCity && option.area === currentAreaForNextCity)
     );
 
     updateDraft("city", city);
@@ -3501,12 +3474,74 @@ function EmptyState({ title, body }: { title: string; body: string }) {
   );
 }
 
+function buildingAreaOptionsForCity(
+  neighborhoods: Neighborhood[],
+  city: string,
+  draftArea: string | null | undefined,
+  draftNeighborhoodID: string | null | undefined,
+  draftState: string | null | undefined
+) {
+  const optionsByKey = new Map<string, BuildingAreaSelectOption>();
+
+  neighborhoods
+    .filter((neighborhood) => neighborhood.city === city)
+    .forEach((neighborhood) => {
+      const area = canonicalBuildingAreaLabel(neighborhood.name, neighborhood.city, neighborhood.state);
+      const key = canonicalBuildingAreaKey(neighborhood.name, neighborhood.city, neighborhood.state);
+      const option: BuildingAreaSelectOption = {
+        area,
+        id: neighborhood.id,
+        label: area,
+        rawName: neighborhood.name,
+        state: neighborhood.state,
+        value: `area:${key}`
+      };
+      const existingOption = optionsByKey.get(key);
+
+      if (!existingOption || isPreferredAreaOption(option, existingOption)) {
+        optionsByKey.set(key, option);
+      }
+    });
+
+  const options = Array.from(optionsByKey.values()).sort((first, second) => first.label.localeCompare(second.label));
+  const canonicalDraftArea = canonicalBuildingAreaLabel(draftArea, city, draftState);
+  const hasDraftArea =
+    canonicalDraftArea.length === 0 ||
+    options.some((option) => option.id === draftNeighborhoodID || option.area === canonicalDraftArea);
+
+  if (!hasDraftArea && canonicalDraftArea) {
+    options.push({
+      area: canonicalDraftArea,
+      id: draftNeighborhoodID ?? null,
+      label: canonicalDraftArea,
+      rawName: draftArea ?? canonicalDraftArea,
+      state: draftState ?? null,
+      value: `custom:${canonicalBuildingAreaKey(canonicalDraftArea, city, draftState)}`
+    });
+  }
+
+  return options;
+}
+
+function isPreferredAreaOption(candidate: BuildingAreaSelectOption, current: BuildingAreaSelectOption) {
+  const candidateIsCanonical = candidate.rawName === candidate.area;
+  const currentIsCanonical = current.rawName === current.area;
+
+  if (candidateIsCanonical !== currentIsCanonical) {
+    return candidateIsCanonical;
+  }
+
+  return candidate.rawName.length < current.rawName.length;
+}
+
 function buildingAreaLabel(building: Building) {
-  return building.area || building.neighborhoods?.name || building.city || "Other";
+  const rawArea = building.area || building.neighborhoods?.name || building.city || "Other";
+  return canonicalBuildingAreaLabel(rawArea, building.city, building.state) || rawArea;
 }
 
 function buildingListAreaTitle(building: Building) {
-  return building.area || building.neighborhoods?.name || "No area";
+  const rawArea = building.area || building.neighborhoods?.name;
+  return rawArea ? canonicalBuildingAreaLabel(rawArea, building.city, building.state) || rawArea : "No area";
 }
 
 function buildingCompanyName(building: Building) {
@@ -3544,7 +3579,7 @@ function buildingCompanyFilterValue(building: Building) {
 }
 
 function areaColor(area: string, fallbackIndex: number) {
-  const preferredIndex = preferredMapAreas.indexOf(area);
+  const preferredIndex = preferredMapRegionValues.indexOf(area);
 
   if (preferredIndex !== -1) {
     return mapAreaPalette[preferredIndex % mapAreaPalette.length];
@@ -3798,7 +3833,7 @@ function buildingPayload(building: Building, images: BuildingImage[]) {
     management_company_id: building.management_company_id,
     management_company: building.management_company,
     website: building.website,
-    area: building.area
+    area: canonicalBuildingAreaLabel(building.area, building.city, building.state) || building.area
   };
 }
 

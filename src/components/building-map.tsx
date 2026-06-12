@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type * as Leaflet from "leaflet";
+import { buildingMapRegionFor, canonicalBuildingAreaLabel } from "@/lib/building-market-groups";
 import type { Building } from "@/lib/types";
 
 type BuildingMapProps = {
@@ -102,7 +103,8 @@ export function BuildingMap({
     validBuildings.forEach((building) => {
       const isSelected = selectedBuilding?.id === building.id;
       const area = buildingArea(building);
-      const markerColor = areaColors?.get(area) ?? areaMarkerColor(area);
+      const mapRegion = buildingMapRegionFor(building);
+      const markerColor = areaColors?.get(mapRegion.value) ?? areaMarkerColor(area);
       const marker = L.marker([building.latitude, building.longitude], {
         draggable: canEdit && isSelected,
         icon: L.divIcon({
@@ -159,7 +161,8 @@ export function BuildingMap({
 }
 
 function buildingArea(building: Building) {
-  return building.area || building.neighborhoods?.name || building.city || "Other";
+  const rawArea = building.area || building.neighborhoods?.name || building.city || "Other";
+  return canonicalBuildingAreaLabel(rawArea, building.city, building.state) || rawArea;
 }
 
 function escapeHtml(value: string) {

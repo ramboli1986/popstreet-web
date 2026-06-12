@@ -7,6 +7,12 @@ export type BuildingLocationFilterOption = {
   depth: 0 | 1;
 };
 
+export type BuildingMapRegionOption = {
+  value: string;
+  label: string;
+  count: number;
+};
+
 type BuildingMarketSource = {
   area?: string | null;
   city?: string | null;
@@ -91,6 +97,110 @@ const brooklynSignals = [
   "bedford-stuyvesant",
   "bed stuy"
 ];
+
+const jerseyCityCanonicalAreaAliases = [
+  {
+    label: "Downtown Jersey City",
+    aliases: ["downtown", "downtown jersey city", "historic downtown", "historic downtown jersey city"]
+  },
+  {
+    label: "Waterfront",
+    aliases: ["jersey city waterfront", "the waterfront", "waterfront", "waterfront jersey city"]
+  },
+  {
+    label: "Newport",
+    aliases: ["newport", "newport jersey city"]
+  }
+];
+
+const mapRegionOrder = [
+  parentFilterValue("nj"),
+  childFilterValue("manhattan", "downtown-manhattan"),
+  childFilterValue("manhattan", "midtown-manhattan"),
+  childFilterValue("manhattan", "upper-east-side"),
+  childFilterValue("manhattan", "upper-west-side"),
+  childFilterValue("queens", "lic"),
+  childFilterValue("queens", "astoria"),
+  parentFilterValue("brooklyn"),
+  parentFilterValue("other")
+];
+
+export function canonicalBuildingAreaLabel(
+  area: string | null | undefined,
+  city: string | null | undefined,
+  state: string | null | undefined
+) {
+  const label = normalizeLocationDisplay(area);
+
+  if (!label) {
+    return "";
+  }
+
+  if (isJerseyCityNJ(city, state)) {
+    const normalizedArea = normalizeLocationText(label);
+    const canonicalArea = jerseyCityCanonicalAreaAliases.find((item) =>
+      item.aliases.some((alias) => normalizeLocationText(alias) === normalizedArea)
+    );
+
+    if (canonicalArea) {
+      return canonicalArea.label;
+    }
+  }
+
+  return label;
+}
+
+export function canonicalBuildingAreaKey(
+  area: string | null | undefined,
+  city: string | null | undefined,
+  state: string | null | undefined
+) {
+  return slugifyLocation(canonicalBuildingAreaLabel(area, city, state));
+}
+
+export function buildingMapRegionFor(building: BuildingMarketSource): Pick<BuildingMapRegionOption, "label" | "value"> {
+  const parent = buildingLocationParentFor(building);
+
+  if (parent === "nj" || parent === "brooklyn" || parent === "other") {
+    return {
+      value: parentFilterValue(parent),
+      label: fixedParents.find((option) => option.value === parent)?.label ?? "Other"
+    };
+  }
+
+  const child = buildingLocationChildFor(building, parent);
+
+  return {
+    value: childFilterValue(parent, child.value),
+    label: child.label
+  };
+}
+
+export function buildingMapRegionOptions(buildings: BuildingMarketSource[]) {
+  const optionsByValue = new Map<string, BuildingMapRegionOption>();
+
+  buildings.forEach((building) => {
+    const region = buildingMapRegionFor(building);
+    const current = optionsByValue.get(region.value) ?? { ...region, count: 0 };
+
+    optionsByValue.set(region.value, { ...current, count: current.count + 1 });
+  });
+
+  return Array.from(optionsByValue.values()).sort((first, second) => {
+    const firstPreferredIndex = mapRegionOrder.indexOf(first.value);
+    const secondPreferredIndex = mapRegionOrder.indexOf(second.value);
+
+    if (firstPreferredIndex !== -1 || secondPreferredIndex !== -1) {
+      return (firstPreferredIndex === -1 ? 999 : firstPreferredIndex) - (secondPreferredIndex === -1 ? 999 : secondPreferredIndex);
+    }
+
+    return second.count - first.count || first.label.localeCompare(second.label);
+  });
+}
+
+export function buildingMatchesMapRegion(building: BuildingMarketSource, regionValue: string) {
+  return regionValue === "all" || buildingMapRegionFor(building).value === regionValue;
+}
 
 export function buildingLocationParentFor(building: BuildingMarketSource): BuildingLocationParentValue {
   if (normalizeToken(building.state) === "nj") {
@@ -255,7 +365,8 @@ function buildingLocationChildFor(
   const searchableLocation = searchableLocationFor(building);
 
   if (parent === "nj") {
-    const label = building.area || building.neighborhoods?.name || building.city || "Other";
+    const rawLabel = building.area || building.neighborhoods?.name || building.city || "Other";
+    const label = canonicalBuildingAreaLabel(rawLabel, building.city, building.state) || rawLabel;
     return { value: slugifyLocation(label), label };
   }
 
@@ -330,6 +441,14 @@ function normalizeLocationText(value: string | null | undefined) {
     .replace(/[^a-z0-9']+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeLocationDisplay(value: string | null | undefined) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function isJerseyCityNJ(city: string | null | undefined, state: string | null | undefined) {
+  return normalizeToken(city) === "jerseycity" && normalizeToken(state) === "nj";
 }
 
 function slugifyLocation(value: string) {

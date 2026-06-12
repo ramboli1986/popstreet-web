@@ -1152,7 +1152,7 @@ strong {
 
 .ops-toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(180px, 220px) minmax(160px, 200px) auto auto;
+  grid-template-columns: minmax(260px, 1fr) minmax(180px, 220px) minmax(210px, 250px) auto auto;
   gap: 10px;
   align-items: center;
   flex: 0 0 auto;
@@ -1187,6 +1187,123 @@ strong {
   min-height: 34px;
   border: 0;
   outline: none;
+}
+
+.hierarchical-select {
+  position: relative;
+  width: 100%;
+}
+
+.hierarchical-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  outline: none;
+  padding: 7px 9px;
+  text-align: left;
+}
+
+.hierarchical-select-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hierarchical-select-trigger:focus-visible,
+.hierarchical-select-trigger[aria-expanded="true"] {
+  border-color: rgb(64 158 255 / 70%);
+  box-shadow: 0 0 0 3px rgb(64 158 255 / 12%);
+}
+
+.hierarchical-select-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 50;
+  width: min(360px, calc(100vw - 48px));
+  min-width: 100%;
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 16px 42px rgb(15 23 42 / 18%);
+  padding: 6px;
+}
+
+.hierarchical-select-option {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.hierarchical-select-option:hover,
+.hierarchical-select-option.selected {
+  background: #eef6ff;
+}
+
+.hierarchical-select-option.parent {
+  font-weight: 720;
+  margin-top: 2px;
+}
+
+.hierarchical-select-option.child {
+  padding-left: 26px;
+}
+
+.hierarchical-select-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563eb;
+}
+
+.hierarchical-select-copy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 10px;
+}
+
+.hierarchical-select-main {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hierarchical-select-option.child .hierarchical-select-main::before {
+  content: "↳";
+  color: var(--muted);
+  margin-right: 7px;
+}
+
+.hierarchical-select-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .ops-toolbar select,

@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type Dispatch,
@@ -13,6 +14,8 @@ import {
 import {
   ArrowDown,
   ArrowUp,
+  Check,
+  ChevronDown,
   EyeOff,
   ImageIcon,
   Pencil,
@@ -51,6 +54,7 @@ import {
 } from "@/lib/unit-description-labels";
 import {
   buildingLocationFilterOptions,
+  buildingLocationFilterOptionDisplay,
   buildingLocationFilterOptionLabel,
   buildingLocationFilterValueExists,
   buildingMatchesLocationFilter
@@ -210,6 +214,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [search, setSearch] = useState("");
   const [companyFilter, setCompanyFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
+  const [isLocationMenuOpen, setIsLocationMenuOpen] = useState(false);
   const [buildingSortKey, setBuildingSortKey] = useState<BuildingSortKey>("updated");
   const [unitSearch, setUnitSearch] = useState("");
   const [unitBuildingFilter, setUnitBuildingFilter] = useState("all");
@@ -224,6 +229,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [uploadingBuildingID, setUploadingBuildingID] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const locationMenuRef = useRef<HTMLDivElement | null>(null);
 
   const canEdit = canEditInventory(profile?.role, profile?.account_kind, profile?.status);
 
@@ -485,12 +491,48 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     () => buildingLocationFilterOptions(buildingsMatchingNonLocationFilters),
     [buildingsMatchingNonLocationFilters]
   );
+  const selectedLocationOption = useMemo(
+    () => locationOptions.find((option) => option.value === locationFilter) ?? null,
+    [locationFilter, locationOptions]
+  );
+  const selectedLocationLabel =
+    locationFilter === "all"
+      ? `${t("manager.allLocations")} (${buildingsMatchingNonLocationFilters.length.toLocaleString(locale)})`
+      : selectedLocationOption
+        ? buildingLocationFilterOptionLabel(selectedLocationOption, locale, locationGroupAllLabel)
+        : t("manager.allLocations");
 
   useEffect(() => {
     if (!buildingLocationFilterValueExists(locationOptions, locationFilter)) {
       setLocationFilter("all");
     }
   }, [locationFilter, locationOptions]);
+
+  useEffect(() => {
+    if (!isLocationMenuOpen) {
+      return;
+    }
+
+    function handleDocumentMouseDown(event: MouseEvent) {
+      if (!locationMenuRef.current?.contains(event.target as Node)) {
+        setIsLocationMenuOpen(false);
+      }
+    }
+
+    function handleDocumentKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsLocationMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleDocumentMouseDown);
+    document.addEventListener("keydown", handleDocumentKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handleDocumentMouseDown);
+      document.removeEventListener("keydown", handleDocumentKeyDown);
+    };
+  }, [isLocationMenuOpen]);
 
   const filteredBuildings = useMemo(() => {
     return buildingsMatchingNonLocationFilters
@@ -1269,16 +1311,70 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               </option>
             ))}
           </select>
-          <select value={locationFilter} onChange={(event) => setLocationFilter(event.target.value)}>
-            <option value="all">
-              {t("manager.allLocations")} ({buildingsMatchingNonLocationFilters.length.toLocaleString(locale)})
-            </option>
-            {locationOptions.map((location) => (
-              <option key={location.value} value={location.value}>
-                {buildingLocationFilterOptionLabel(location, locale, locationGroupAllLabel)}
-              </option>
-            ))}
-          </select>
+          <div className="hierarchical-select" ref={locationMenuRef}>
+            <button
+              type="button"
+              className="hierarchical-select-trigger"
+              aria-haspopup="listbox"
+              aria-expanded={isLocationMenuOpen}
+              onClick={() => setIsLocationMenuOpen((current) => !current)}
+            >
+              <span>{selectedLocationLabel}</span>
+              <ChevronDown size={16} strokeWidth={2.2} />
+            </button>
+            {isLocationMenuOpen ? (
+              <div className="hierarchical-select-menu" role="listbox">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={locationFilter === "all"}
+                  className={`hierarchical-select-option${locationFilter === "all" ? " selected" : ""}`}
+                  onClick={() => {
+                    setLocationFilter("all");
+                    setIsLocationMenuOpen(false);
+                  }}
+                >
+                  <span className="hierarchical-select-check">
+                    {locationFilter === "all" ? <Check size={15} strokeWidth={2.6} /> : null}
+                  </span>
+                  <span className="hierarchical-select-copy">
+                    <span className="hierarchical-select-main">{t("manager.allLocations")}</span>
+                    <span className="hierarchical-select-count">
+                      {buildingsMatchingNonLocationFilters.length.toLocaleString(locale)}
+                    </span>
+                  </span>
+                </button>
+                {locationOptions.map((location) => {
+                  const display = buildingLocationFilterOptionDisplay(location, locale, locationGroupAllLabel);
+                  const isSelected = locationFilter === location.value;
+
+                  return (
+                    <button
+                      key={location.value}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      className={`hierarchical-select-option depth-${display.level}${
+                        display.level === 0 ? " parent" : " child"
+                      }${isSelected ? " selected" : ""}`}
+                      onClick={() => {
+                        setLocationFilter(location.value);
+                        setIsLocationMenuOpen(false);
+                      }}
+                    >
+                      <span className="hierarchical-select-check">
+                        {isSelected ? <Check size={15} strokeWidth={2.6} /> : null}
+                      </span>
+                      <span className="hierarchical-select-copy">
+                        <span className="hierarchical-select-main">{display.label}</span>
+                        <span className="hierarchical-select-count">{display.countLabel}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
           <select
             value={buildingSortKey}
             onChange={(event) => setBuildingSortKey(event.target.value as BuildingSortKey)}

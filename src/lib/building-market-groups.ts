@@ -184,6 +184,20 @@ export function buildingLocationFilterValueExists(options: BuildingLocationFilte
   return locationFilter === "all" || options.some((option) => option.value === locationFilter);
 }
 
+export function buildingLocationFilterOptionLabel(
+  option: Pick<BuildingLocationFilterOption, "count" | "depth" | "label">,
+  locale: string,
+  allLabel: string
+) {
+  const count = option.count.toLocaleString(locale);
+
+  if (option.depth === 0) {
+    return `${option.label} (${allLabel} ${count})`;
+  }
+
+  return `↳ ${option.label} (${count})`;
+}
+
 function childOptionsForParent(
   parent: BuildingLocationParentValue,
   childCounts: Map<string, { label: string; count: number }> | undefined

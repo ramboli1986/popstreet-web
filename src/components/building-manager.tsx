@@ -51,6 +51,7 @@ import {
 } from "@/lib/unit-description-labels";
 import {
   buildingLocationFilterOptions,
+  buildingLocationFilterOptionLabel,
   buildingLocationFilterValueExists,
   buildingMatchesLocationFilter
 } from "@/lib/building-market-groups";
@@ -189,6 +190,7 @@ const mapAreaPalette = [
 export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const { language, t } = useI18n();
   const locale = language === "zh" ? "zh-CN" : "en-US";
+  const locationGroupAllLabel = language === "zh" ? "全部" : "all";
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [buildingImages, setBuildingImages] = useState<BuildingImage[]>([]);
   const [buildingServices, setBuildingServices] = useState<BuildingService[]>([]);
@@ -1273,8 +1275,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             </option>
             {locationOptions.map((location) => (
               <option key={location.value} value={location.value}>
-                {location.depth === 1 ? "    " : ""}
-                {location.label} ({location.count.toLocaleString(locale)})
+                {buildingLocationFilterOptionLabel(location, locale, locationGroupAllLabel)}
               </option>
             ))}
           </select>

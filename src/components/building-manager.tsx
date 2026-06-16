@@ -95,13 +95,6 @@ type BuildingAreaSelectOption = {
   value: string;
 };
 
-type UnitIndex = Pick<Unit, "id" | "building_id">;
-type BuildingMetric = {
-  unitCount: number;
-  availableCount: number;
-  minNetPrice: number | null;
-  latestListingAt: string | null;
-};
 type UnitStatusFilter = "all" | "listed" | "unlisted";
 type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 type BuildingUnitListFilter = "all" | "listed" | "unlisted";
@@ -216,8 +209,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [buildingTransitLines, setBuildingTransitLines] = useState<BuildingTransitLine[]>([]);
   const [neighborhoods, setNeighborhoods] = useState<Neighborhood[]>([]);
   const [managementCompanies, setManagementCompanies] = useState<ManagementCompany[]>([]);
-  const [unitIndex, setUnitIndex] = useState<UnitIndex[]>([]);
-  const [listingIndex, setListingIndex] = useState<UnitListing[]>([]);
   const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null);
   const [draft, setDraft] = useState<Building | null>(null);
   const [units, setUnits] = useState<UnitWithListing[]>([]);
@@ -256,8 +247,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       buildingResult,
       neighborhoodResult,
       companyResult,
-      unitResult,
-      listingResult,
       buildingImageResult,
       buildingServiceResult,
       buildingTransitResult
@@ -269,8 +258,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         .limit(800),
       supabase.from("neighborhoods").select("id, slug, name, city, state").order("name"),
       supabase.from("management_companies").select("*").order("name"),
-      supabase.from("units").select("id, building_id").limit(5000),
-      supabase.from("unit_listings").select("*").order("updated_at", { ascending: false }).limit(5000),
       supabase.from("building_images").select("*").order("sort_order").limit(10000),
       supabase.from("building_services").select("*").order("sort_order").limit(10000),
       supabase.from("building_transit_lines").select("*").order("sort_order").limit(10000)
@@ -282,8 +269,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       buildingResult.error ||
       neighborhoodResult.error ||
       companyResult.error ||
-      unitResult.error ||
-      listingResult.error ||
       buildingImageResult.error ||
       buildingServiceResult.error ||
       buildingTransitResult.error
@@ -292,8 +277,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         buildingResult.error?.message ??
           neighborhoodResult.error?.message ??
           companyResult.error?.message ??
-          unitResult.error?.message ??
-          listingResult.error?.message ??
           buildingImageResult.error?.message ??
           buildingServiceResult.error?.message ??
           buildingTransitResult.error?.message ??
@@ -311,8 +294,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
     setBuildings(nextBuildings);
     setNeighborhoods((neighborhoodResult.data ?? []) as Neighborhood[]);
     setManagementCompanies((companyResult.data ?? []) as ManagementCompany[]);
-    setUnitIndex((unitResult.data ?? []) as UnitIndex[]);
-    setListingIndex((listingResult.data ?? []) as UnitListing[]);
     setBuildingImages((buildingImageResult.data ?? []) as BuildingImage[]);
     setBuildingServices((buildingServiceResult.data ?? []) as BuildingService[]);
     setBuildingTransitLines((buildingTransitResult.data ?? []) as BuildingTransitLine[]);
@@ -359,7 +340,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       }
     });
 
-    setListingIndex(nextListings);
     setUnitImages((imageResult.data ?? []) as UnitImage[]);
     setUnits(baseUnits.map((unit) => ({ ...unit, listing: listingsByUnit.get(unit.id) ?? null })));
   }, []);
@@ -379,47 +359,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   useEffect(() => {
     setVisibleUnitCount(unitBatchSize);
   }, [unitBedroomFilter, unitBuildingFilter, unitSearch, unitStatusFilter]);
-
-  const buildingMetrics = useMemo(() => {
-    const latestListingByUnit = new Map<string, UnitListing>();
-
-    listingIndex.forEach((listing) => {
-      if (!latestListingByUnit.has(listing.unit_id)) {
-        latestListingByUnit.set(listing.unit_id, listing);
-      }
-    });
-
-    const nextMetrics = new Map<string, BuildingMetric>();
-
-    unitIndex.forEach((unit) => {
-      const metric = nextMetrics.get(unit.building_id) ?? {
-        unitCount: 0,
-        availableCount: 0,
-        minNetPrice: null,
-        latestListingAt: null
-      };
-      const listing = latestListingByUnit.get(unit.id);
-
-      metric.unitCount += 1;
-
-      if (listing) {
-        metric.latestListingAt =
-          metric.latestListingAt == null || listing.updated_at > metric.latestListingAt
-            ? listing.updated_at
-            : metric.latestListingAt;
-      }
-
-      if (listing?.status === "available") {
-        metric.availableCount += 1;
-        metric.minNetPrice =
-          metric.minNetPrice == null ? listing.net_price_cents : Math.min(metric.minNetPrice, listing.net_price_cents);
-      }
-
-      nextMetrics.set(unit.building_id, metric);
-    });
-
-    return nextMetrics;
-  }, [listingIndex, unitIndex]);
 
   const buildingByID = useMemo(() => {
     const nextBuildingsByID = new Map<string, Building>();
@@ -540,11 +479,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       .sort((first, second) => compareBuildingsForSort(first, second, buildingSortKey));
   }, [buildingSortKey, buildingsMatchingNonLocationFilters, locationFilter]);
 
-  const filteredAvailableUnitCount = useMemo(
-    () =>
-      filteredBuildings.reduce((total, building) => total + (buildingMetrics.get(building.id)?.availableCount ?? 0), 0),
-    [buildingMetrics, filteredBuildings]
-  );
   const filteredCompanyCount = useMemo(() => {
     const companyValues = new Set<string>();
 
@@ -1083,8 +1017,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       eyebrow: t("manager.buildingsEyebrow"),
       title: t("manager.buildingsTitle", { count: filteredBuildings.length.toLocaleString(locale) }),
       subtitle: t("manager.buildingsSubtitle", {
-        companies: filteredCompanyCount.toLocaleString(locale),
-        available: filteredAvailableUnitCount.toLocaleString(locale)
+        companies: filteredCompanyCount.toLocaleString(locale)
       })
     },
     units: {
@@ -1408,7 +1341,6 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               buildings={visibleBuildings}
               canEdit={canEdit}
               filteredCount={filteredBuildings.length}
-              metrics={buildingMetrics}
               selectedBuilding={selectedBuilding}
               sortKey={buildingSortKey}
               onLoadMore={(event) =>
@@ -1485,7 +1417,6 @@ function BuildingTable({
   buildings,
   canEdit,
   filteredCount,
-  metrics,
   selectedBuilding,
   sortKey,
   onLoadMore,
@@ -1496,7 +1427,6 @@ function BuildingTable({
   buildings: Building[];
   canEdit: boolean;
   filteredCount: number;
-  metrics: Map<string, BuildingMetric>;
   selectedBuilding: Building | null;
   sortKey: BuildingSortKey;
   onLoadMore: (event: UIEvent<HTMLDivElement>) => void;
@@ -1526,15 +1456,13 @@ function BuildingTable({
                 {sortKey === "company" ? <ArrowDown size={13} /> : null}
               </button>
             </th>
-            <th>Available</th>
-            <th>Lowest net</th>
-            <th>Updated</th>
+            <th>Units number</th>
+            <th>Floors</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {buildings.map((building, index) => {
-            const metric = metrics.get(building.id);
             const isSelected = selectedBuilding?.id === building.id;
             const buildingWebsite = building.website;
             const companyName = buildingCompanyName(building);
@@ -1579,12 +1507,8 @@ function BuildingTable({
                 <td>
                   <strong>{companyName}</strong>
                 </td>
-                <td>
-                  <strong>{metric?.availableCount ?? 0}</strong>
-                  <div className="table-subtext">{metric?.unitCount ?? 0} units</div>
-                </td>
-                <td>{formatMoneyFromCents(metric?.minNetPrice)}</td>
-                <td>{formatDate(metric?.latestListingAt ?? building.updated_at)}</td>
+                <td>{formatNullableCount(building.total_units)}</td>
+                <td>{formatNullableCount(building.total_floors)}</td>
                 <td>
                   <div className="row-actions">
                     <button

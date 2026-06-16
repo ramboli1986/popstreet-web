@@ -161,7 +161,7 @@ const dictionaries: Record<Language, TranslationDictionary> = {
     manager: {
       buildingsEyebrow: "Buildings",
       buildingsTitle: "Found {count} buildings",
-      buildingsSubtitle: "{companies} companies · {available} available units",
+      buildingsSubtitle: "{companies} companies",
       unitsEyebrow: "Daily deals",
       unitsTitle: "Units & Deals",
       unitsSubtitle: "{total} matching units · {available} available right now",
@@ -516,7 +516,7 @@ const dictionaries: Record<Language, TranslationDictionary> = {
     manager: {
       buildingsEyebrow: "大楼",
       buildingsTitle: "发现 {count} 栋大楼",
-      buildingsSubtitle: "{companies} 家公司 · {available} 个可租房源",
+      buildingsSubtitle: "{companies} 家公司",
       unitsEyebrow: "每日优惠",
       unitsTitle: "房源与优惠",
       unitsSubtitle: "{total} 个匹配房源 · {available} 个当前可租",

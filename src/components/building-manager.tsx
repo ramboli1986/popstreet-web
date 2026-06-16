@@ -3472,6 +3472,10 @@ function buildingCompanyName(building: Building) {
   return building.management_companies?.name ?? building.management_company ?? "Unassigned";
 }
 
+function formatNullableCount(value: number | null | undefined) {
+  return value == null ? "—" : value.toLocaleString();
+}
+
 function compareBuildingsForSort(first: Building, second: Building, sortKey: BuildingSortKey) {
   if (sortKey === "company") {
     return (

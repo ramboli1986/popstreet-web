@@ -1,4 +1,12 @@
-export type BuildingLocationParentValue = "nj" | "manhattan" | "queens" | "brooklyn" | "other";
+export type BuildingLocationParentValue =
+  | "nj"
+  | "manhattan-downtown"
+  | "manhattan-midtown"
+  | "manhattan-upper-east"
+  | "manhattan-upper-west"
+  | "queens"
+  | "brooklyn"
+  | "other";
 
 export type BuildingLocationFilterOption = {
   value: string;
@@ -17,6 +25,7 @@ type BuildingMarketSource = {
   area?: string | null;
   city?: string | null;
   state?: string | null;
+  description_labels?: string[] | null;
   neighborhoods?: {
     name?: string | null;
   } | null;
@@ -29,7 +38,10 @@ type BuildingLocationChild = {
 
 const fixedParents: Array<{ value: BuildingLocationParentValue; label: string }> = [
   { value: "nj", label: "NJ" },
-  { value: "manhattan", label: "Manhattan" },
+  { value: "manhattan-downtown", label: "Manhattan Downtown" },
+  { value: "manhattan-midtown", label: "Manhattan Midtown" },
+  { value: "manhattan-upper-east", label: "Manhattan Upper East" },
+  { value: "manhattan-upper-west", label: "Manhattan Upper West" },
   { value: "queens", label: "Queens" },
   { value: "brooklyn", label: "Brooklyn" }
 ];
@@ -107,10 +119,10 @@ const queensCanonicalAreaAliases = [
 
 const mapRegionOrder = [
   parentFilterValue("nj"),
-  childFilterValue("manhattan", "downtown-manhattan"),
-  childFilterValue("manhattan", "midtown-manhattan"),
-  childFilterValue("manhattan", "upper-east-side"),
-  childFilterValue("manhattan", "upper-west-side"),
+  parentFilterValue("manhattan-downtown"),
+  parentFilterValue("manhattan-midtown"),
+  parentFilterValue("manhattan-upper-east"),
+  parentFilterValue("manhattan-upper-west"),
   childFilterValue("queens", "lic"),
   childFilterValue("queens", "astoria"),
   parentFilterValue("brooklyn"),
@@ -164,7 +176,7 @@ export function canonicalBuildingAreaKey(
 export function buildingMapRegionFor(building: BuildingMarketSource): Pick<BuildingMapRegionOption, "label" | "value"> {
   const parent = buildingLocationParentFor(building);
 
-  if (parent === "nj" || parent === "brooklyn" || parent === "other") {
+  if (parent !== "queens") {
     return {
       value: parentFilterValue(parent),
       label: fixedParents.find((option) => option.value === parent)?.label ?? "Other"
@@ -234,7 +246,23 @@ export function buildingLocationParentFor(building: BuildingMarketSource): Build
       ...upperWestSideSignals
     ])
   ) {
-    return "manhattan";
+    if (hasAnySignal(searchableLocation, downtownManhattanSignals)) {
+      return "manhattan-downtown";
+    }
+
+    if (hasAnySignal(searchableLocation, midtownManhattanSignals)) {
+      return "manhattan-midtown";
+    }
+
+    if (hasAnySignal(searchableLocation, upperEastSideSignals)) {
+      return "manhattan-upper-east";
+    }
+
+    if (hasAnySignal(searchableLocation, upperWestSideSignals)) {
+      return "manhattan-upper-west";
+    }
+
+    return "manhattan-midtown";
   }
 
   return "other";
@@ -376,24 +404,11 @@ function buildingLocationChildFor(
     return { value: slugifyLocation(label), label };
   }
 
-  if (parent === "manhattan") {
-    if (hasAnySignal(searchableLocation, downtownManhattanSignals)) {
-      return { value: "downtown-manhattan", label: "Downtown Manhattan" };
-    }
-
-    if (hasAnySignal(searchableLocation, midtownManhattanSignals)) {
-      return { value: "midtown-manhattan", label: "Midtown Manhattan" };
-    }
-
-    if (hasAnySignal(searchableLocation, upperEastSideSignals)) {
-      return { value: "upper-east-side", label: "Upper East Side" };
-    }
-
-    if (hasAnySignal(searchableLocation, upperWestSideSignals)) {
-      return { value: "upper-west-side", label: "Upper West Side" };
-    }
-
-    return { value: "other-manhattan", label: "Other Manhattan" };
+  if (isManhattanParent(parent)) {
+    return {
+      value: parent.replace(/^manhattan-/, ""),
+      label: fixedParents.find((option) => option.value === parent)?.label ?? "Manhattan"
+    };
   }
 
   if (parent === "queens") {
@@ -424,10 +439,14 @@ function childFilterValue(parent: BuildingLocationParentValue, child: string) {
 }
 
 function searchableLocationFor(building: BuildingMarketSource) {
-  return [building.area, building.neighborhoods?.name, building.city]
+  return [building.area, building.neighborhoods?.name, building.city, ...(building.description_labels ?? [])]
     .filter(Boolean)
     .map((value) => normalizeLocationText(value!))
     .join(" ");
+}
+
+function isManhattanParent(parent: BuildingLocationParentValue) {
+  return parent.startsWith("manhattan-");
 }
 
 function hasAnySignal(value: string, signals: string[]) {

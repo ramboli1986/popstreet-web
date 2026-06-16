@@ -177,10 +177,10 @@ const buildingBatchSize = 25;
 const unitBatchSize = 25;
 const preferredMapRegionValues = [
   "parent:nj",
-  "child:manhattan:downtown-manhattan",
-  "child:manhattan:midtown-manhattan",
-  "child:manhattan:upper-east-side",
-  "child:manhattan:upper-west-side",
+  "parent:manhattan-downtown",
+  "parent:manhattan-midtown",
+  "parent:manhattan-upper-east",
+  "parent:manhattan-upper-west",
   "child:queens:lic",
   "child:queens:astoria",
   "parent:brooklyn",

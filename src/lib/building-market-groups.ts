@@ -34,20 +34,6 @@ const fixedParents: Array<{ value: BuildingLocationParentValue; label: string }>
   { value: "brooklyn", label: "Brooklyn" }
 ];
 
-const fixedChildrenByParent: Partial<Record<BuildingLocationParentValue, BuildingLocationChild[]>> = {
-  manhattan: [
-    { value: "downtown-manhattan", label: "Downtown Manhattan" },
-    { value: "midtown-manhattan", label: "Midtown Manhattan" },
-    { value: "upper-east-side", label: "Upper East Side" },
-    { value: "upper-west-side", label: "Upper West Side" }
-  ],
-  queens: [
-    { value: "lic", label: "LIC" },
-    { value: "astoria", label: "Astoria" }
-  ],
-  brooklyn: [{ value: "brooklyn", label: "Brooklyn" }]
-};
-
 const downtownManhattanSignals = [
   "downtown manhattan",
   "financial district",
@@ -112,6 +98,12 @@ const jerseyCityCanonicalAreaAliases = [
     aliases: ["newport", "newport jersey city"]
   }
 ];
+const queensCanonicalAreaAliases = [
+  {
+    label: "Long Island City",
+    aliases: ["hunters point", "hunter's point", "lic", "long island city"]
+  }
+];
 
 const mapRegionOrder = [
   parentFilterValue("nj"),
@@ -139,6 +131,17 @@ export function canonicalBuildingAreaLabel(
   if (isJerseyCityNJ(city, state)) {
     const normalizedArea = normalizeLocationText(label);
     const canonicalArea = jerseyCityCanonicalAreaAliases.find((item) =>
+      item.aliases.some((alias) => normalizeLocationText(alias) === normalizedArea)
+    );
+
+    if (canonicalArea) {
+      return canonicalArea.label;
+    }
+  }
+
+  if (isQueensNY(city, state) || isLongIslandCityNY(city, state)) {
+    const normalizedArea = normalizeLocationText(label);
+    const canonicalArea = queensCanonicalAreaAliases.find((item) =>
       item.aliases.some((alias) => normalizeLocationText(alias) === normalizedArea)
     );
 
@@ -243,7 +246,7 @@ export function buildingLocationFilterOptions(buildings: BuildingMarketSource[])
 
   buildings.forEach((building) => {
     const parent = buildingLocationParentFor(building);
-    const child = buildingLocationChildFor(building, parent);
+    const child = buildingLocationAreaChildFor(building, parent);
     const childCounts = childCountsByParent.get(parent) ?? new Map<string, { label: string; count: number }>();
     const childCount = childCounts.get(child.value) ?? { label: child.label, count: 0 };
 
@@ -285,7 +288,7 @@ export function buildingMatchesLocationFilter(building: BuildingMarketSource, lo
     return true;
   }
 
-  const child = buildingLocationChildFor(building, parent);
+  const child = buildingLocationAreaChildFor(building, parent);
 
   return locationFilter === childFilterValue(parent, child.value);
 }
@@ -326,27 +329,7 @@ function childOptionsForParent(
   parent: BuildingLocationParentValue,
   childCounts: Map<string, { label: string; count: number }> | undefined
 ) {
-  if (parent === "nj") {
-    return Array.from(childCounts?.entries() ?? [])
-      .map(([value, child]) => ({
-        value: childFilterValue(parent, value),
-        label: child.label,
-        count: child.count,
-        depth: 1 as const
-      }))
-      .sort((first, second) => second.count - first.count || first.label.localeCompare(second.label));
-  }
-
-  const fixedChildren = fixedChildrenByParent[parent] ?? [];
-  const fixedChildValues = new Set(fixedChildren.map((child) => child.value));
-  const options = fixedChildren.map((child) => ({
-    value: childFilterValue(parent, child.value),
-    label: child.label,
-    count: childCounts?.get(child.value)?.count ?? 0,
-    depth: 1 as const
-  }));
-  const extraChildren = Array.from(childCounts?.entries() ?? [])
-    .filter(([value]) => !fixedChildValues.has(value))
+  return Array.from(childCounts?.entries() ?? [])
     .map(([value, child]) => ({
       value: childFilterValue(parent, value),
       label: child.label,
@@ -354,8 +337,31 @@ function childOptionsForParent(
       depth: 1 as const
     }))
     .sort((first, second) => second.count - first.count || first.label.localeCompare(second.label));
+}
 
-  return [...options, ...extraChildren];
+function buildingLocationAreaChildFor(
+  building: BuildingMarketSource,
+  parent: BuildingLocationParentValue
+): BuildingLocationChild {
+  const rawLabel =
+    parent === "brooklyn" && normalizeLocationText(building.area) === "brooklyn" && building.neighborhoods?.name
+      ? building.neighborhoods.name
+      : building.area || building.neighborhoods?.name;
+  const label = canonicalBuildingAreaLabel(rawLabel, building.city, building.state);
+
+  if (label) {
+    return { value: buildingLocationAreaChildValue(label, parent), label };
+  }
+
+  return buildingLocationChildFor(building, parent);
+}
+
+function buildingLocationAreaChildValue(label: string, parent: BuildingLocationParentValue) {
+  if (parent === "queens" && normalizeLocationText(label) === "long island city") {
+    return "lic";
+  }
+
+  return slugifyLocation(label);
 }
 
 function buildingLocationChildFor(
@@ -396,7 +402,7 @@ function buildingLocationChildFor(
     }
 
     if (hasAnySignal(searchableLocation, licSignals)) {
-      return { value: "lic", label: "LIC" };
+      return { value: "lic", label: "Long Island City" };
     }
 
     return { value: "other-queens", label: "Other Queens" };
@@ -449,6 +455,14 @@ function normalizeLocationDisplay(value: string | null | undefined) {
 
 function isJerseyCityNJ(city: string | null | undefined, state: string | null | undefined) {
   return normalizeToken(city) === "jerseycity" && normalizeToken(state) === "nj";
+}
+
+function isQueensNY(city: string | null | undefined, state: string | null | undefined) {
+  return normalizeToken(city) === "queens" && normalizeToken(state) === "ny";
+}
+
+function isLongIslandCityNY(city: string | null | undefined, state: string | null | undefined) {
+  return normalizeToken(city) === "longislandcity" && normalizeToken(state) === "ny";
 }
 
 function slugifyLocation(value: string) {

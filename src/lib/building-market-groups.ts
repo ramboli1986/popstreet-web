@@ -22,6 +22,8 @@ export type BuildingMapRegionOption = {
 };
 
 type BuildingMarketSource = {
+  address?: string | null;
+  full_address?: string | null;
   area?: string | null;
   city?: string | null;
   state?: string | null;
@@ -48,39 +50,60 @@ const fixedParents: Array<{ value: BuildingLocationParentValue; label: string }>
 
 const downtownManhattanSignals = [
   "downtown manhattan",
-  "financial district",
-  "fidi",
-  "tribeca",
-  "soho",
-  "nolita",
-  "lower east side",
-  "east village",
-  "west village",
-  "greenwich village",
-  "noho",
-  "chinatown",
-  "two bridges",
   "battery park",
   "battery park city",
-  "civic center"
+  "chelsea",
+  "chinatown",
+  "civic center",
+  "east village",
+  "financial district",
+  "fidi",
+  "flatiron",
+  "fulton seaport",
+  "gramercy",
+  "gramercy park",
+  "greenwich village",
+  "hudson square",
+  "lower east side",
+  "noho",
+  "nolita",
+  "nomad",
+  "seaport",
+  "soho",
+  "tribeca",
+  "two bridges",
+  "union square",
+  "west chelsea",
+  "west village"
 ];
 const midtownManhattanSignals = [
   "midtown manhattan",
   "midtown",
-  "chelsea",
   "hells kitchen",
   "hell's kitchen",
   "hudson yards",
   "murray hill",
   "kips bay",
-  "nomad",
-  "flatiron",
-  "gramercy",
+  "midtown east",
+  "midtown west",
+  "sutton place",
   "theater district",
+  "times square",
   "turtle bay"
 ];
-const upperEastSideSignals = ["upper east side", "yorkville", "lenox hill", "carnegie hill"];
-const upperWestSideSignals = ["upper west side", "lincoln square", "manhattan valley", "morningside heights"];
+const broadMidtownManhattanSignals = ["midtown", "midtown manhattan"];
+const specificMidtownManhattanSignals = midtownManhattanSignals.filter(
+  (signal) => !broadMidtownManhattanSignals.includes(signal)
+);
+const upperEastSideSignals = ["upper east side", "yorkville", "lenox hill", "carnegie hill", "east harlem"];
+const upperWestSideSignals = [
+  "upper west side",
+  "lincoln square",
+  "manhattan valley",
+  "morningside heights",
+  "columbus circle",
+  "central park west"
+];
 const licSignals = ["lic", "long island city", "hunters point", "hunter's point"];
 const astoriaSignals = ["astoria"];
 const brooklynSignals = [
@@ -223,6 +246,8 @@ export function buildingLocationParentFor(building: BuildingMarketSource): Build
   }
 
   const searchableLocation = searchableLocationFor(building);
+  const searchableArea = searchableAreaFor(building);
+  const searchableLabels = searchableLabelsFor(building);
   const normalizedCity = normalizeToken(building.city);
 
   if (hasAnySignal(searchableLocation, brooklynSignals) || normalizedCity === "brooklyn") {
@@ -246,12 +271,50 @@ export function buildingLocationParentFor(building: BuildingMarketSource): Build
       ...upperWestSideSignals
     ])
   ) {
-    if (hasAnySignal(searchableLocation, downtownManhattanSignals)) {
+    if (hasAnySignal(searchableArea, downtownManhattanSignals)) {
       return "manhattan-downtown";
     }
 
-    if (hasAnySignal(searchableLocation, midtownManhattanSignals)) {
+    if (hasAnySignal(searchableArea, upperEastSideSignals)) {
+      return "manhattan-upper-east";
+    }
+
+    if (hasAnySignal(searchableArea, upperWestSideSignals)) {
+      return "manhattan-upper-west";
+    }
+
+    if (hasAnySignal(searchableArea, specificMidtownManhattanSignals)) {
       return "manhattan-midtown";
+    }
+
+    const streetRegion = manhattanStreetRegionFor(building);
+
+    if (streetRegion) {
+      return streetRegion;
+    }
+
+    if (hasAnySignal(searchableArea, broadMidtownManhattanSignals)) {
+      return "manhattan-midtown";
+    }
+
+    if (hasAnySignal(searchableLabels, downtownManhattanSignals)) {
+      return "manhattan-downtown";
+    }
+
+    if (hasAnySignal(searchableLabels, upperEastSideSignals)) {
+      return "manhattan-upper-east";
+    }
+
+    if (hasAnySignal(searchableLabels, upperWestSideSignals)) {
+      return "manhattan-upper-west";
+    }
+
+    if (hasAnySignal(searchableLabels, midtownManhattanSignals)) {
+      return "manhattan-midtown";
+    }
+
+    if (hasAnySignal(searchableLocation, downtownManhattanSignals)) {
+      return "manhattan-downtown";
     }
 
     if (hasAnySignal(searchableLocation, upperEastSideSignals)) {
@@ -260,6 +323,10 @@ export function buildingLocationParentFor(building: BuildingMarketSource): Build
 
     if (hasAnySignal(searchableLocation, upperWestSideSignals)) {
       return "manhattan-upper-west";
+    }
+
+    if (hasAnySignal(searchableLocation, midtownManhattanSignals)) {
+      return "manhattan-midtown";
     }
 
     return "manhattan-midtown";
@@ -444,6 +511,98 @@ function searchableLocationFor(building: BuildingMarketSource) {
     .map((value) => normalizeLocationText(value!))
     .join(" ");
 }
+
+function searchableAreaFor(building: BuildingMarketSource) {
+  return [building.area, building.neighborhoods?.name]
+    .filter(Boolean)
+    .map((value) => normalizeLocationText(value!))
+    .join(" ");
+}
+
+function searchableLabelsFor(building: BuildingMarketSource) {
+  return (building.description_labels ?? [])
+    .filter(Boolean)
+    .map((value) => normalizeLocationText(value))
+    .join(" ");
+}
+
+function manhattanStreetRegionFor(building: BuildingMarketSource): BuildingLocationParentValue | null {
+  const address = normalizeLocationText([building.address, building.full_address].filter(Boolean).join(" "));
+  const directionMatch = address.match(/\b(east|west|e|w)\b/);
+  const direction = directionMatch?.[1]?.startsWith("e") ? "east" : directionMatch ? "west" : "";
+  const street = streetNumberFromAddress(address);
+
+  if (street === null) {
+    return null;
+  }
+
+  if (street <= 33) {
+    return "manhattan-downtown";
+  }
+
+  if (street <= 59) {
+    return "manhattan-midtown";
+  }
+
+  if (direction === "east") {
+    return "manhattan-upper-east";
+  }
+
+  if (direction === "west") {
+    return "manhattan-upper-west";
+  }
+
+  return null;
+}
+
+function streetNumberFromAddress(address: string) {
+  const numericMatch = address.match(/\b(\d{1,3})(?:st|nd|rd|th)?\s+street\b/);
+
+  if (numericMatch?.[1]) {
+    return Number(numericMatch[1]);
+  }
+
+  for (const [word, street] of ordinalStreetWords) {
+    if (address.includes(`${word} street`)) {
+      return street;
+    }
+  }
+
+  return null;
+}
+
+const ordinalStreetWords: Array<[string, number]> = [
+  ["first", 1],
+  ["second", 2],
+  ["third", 3],
+  ["fourth", 4],
+  ["fifth", 5],
+  ["sixth", 6],
+  ["seventh", 7],
+  ["eighth", 8],
+  ["ninth", 9],
+  ["tenth", 10],
+  ["eleventh", 11],
+  ["twelfth", 12],
+  ["thirteenth", 13],
+  ["fourteenth", 14],
+  ["fifteenth", 15],
+  ["sixteenth", 16],
+  ["seventeenth", 17],
+  ["eighteenth", 18],
+  ["nineteenth", 19],
+  ["twentieth", 20],
+  ["twenty first", 21],
+  ["twenty second", 22],
+  ["twenty third", 23],
+  ["twenty fourth", 24],
+  ["twenty fifth", 25],
+  ["twenty sixth", 26],
+  ["twenty seventh", 27],
+  ["twenty eighth", 28],
+  ["twenty ninth", 29],
+  ["thirtieth", 30]
+];
 
 function isManhattanParent(parent: BuildingLocationParentValue) {
   return parent.startsWith("manhattan-");

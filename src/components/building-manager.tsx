@@ -98,7 +98,7 @@ type BuildingAreaSelectOption = {
 type UnitStatusFilter = "all" | "listed" | "unlisted";
 type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 type BuildingUnitListFilter = "all" | "listed" | "unlisted";
-type BuildingSortKey = "updated" | "company";
+type BuildingSortKey = "updated" | "company" | "year_built";
 type BuildingServiceOption = {
   title: string;
   label: string;
@@ -1310,6 +1310,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
           >
             <option value="updated">{t("manager.sortRecentlyUpdated")}</option>
             <option value="company">{t("manager.sortCompany")}</option>
+            <option value="year_built">{t("manager.sortYearBuilt")}</option>
           </select>
         </section>
       )}
@@ -1458,6 +1459,16 @@ function BuildingTable({
             </th>
             <th>Units number</th>
             <th>Floors</th>
+            <th>
+              <button
+                className="table-header-sort"
+                onClick={() => onSortChange("year_built")}
+                type="button"
+              >
+                Year built
+                {sortKey === "year_built" ? <ArrowDown size={13} /> : null}
+              </button>
+            </th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -1509,6 +1520,7 @@ function BuildingTable({
                 </td>
                 <td>{formatNullableCount(building.total_units)}</td>
                 <td>{formatNullableCount(building.total_floors)}</td>
+                <td>{formatNullableCount(building.year_built)}</td>
                 <td>
                   <div className="row-actions">
                     <button
@@ -3485,11 +3497,35 @@ function compareBuildingsForSort(first: Building, second: Building, sortKey: Bui
     );
   }
 
+  if (sortKey === "year_built") {
+    return (
+      nullableNumberDescending(first.year_built, second.year_built) ||
+      first.name.localeCompare(second.name) ||
+      first.address.localeCompare(second.address)
+    );
+  }
+
   return (
     second.updated_at.localeCompare(first.updated_at) ||
     first.name.localeCompare(second.name) ||
     first.address.localeCompare(second.address)
   );
+}
+
+function nullableNumberDescending(first: number | null | undefined, second: number | null | undefined) {
+  if (first == null && second == null) {
+    return 0;
+  }
+
+  if (first == null) {
+    return 1;
+  }
+
+  if (second == null) {
+    return -1;
+  }
+
+  return second - first;
 }
 
 function buildingCompanyFilterValue(building: Building) {

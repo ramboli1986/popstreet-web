@@ -1580,7 +1580,7 @@ function SortableBuildingHeader({
     : defaultBuildingSortDirection(sortKey);
 
   return (
-    <th aria-sort={ariaSort}>
+    <th aria-sort={ariaSort} className="sortable-table-header">
       <button
         aria-label={`${label}: sort ${nextDirection === "asc" ? "ascending" : "descending"}`}
         className={`table-header-sort${isActive ? " active" : ""}`}

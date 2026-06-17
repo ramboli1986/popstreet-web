@@ -1464,11 +1464,22 @@ strong {
   white-space: nowrap;
 }
 
+.sortable-table-header {
+  cursor: pointer;
+  padding: 0;
+  user-select: none;
+}
+
+.sortable-table-header:hover .table-header-sort {
+  color: var(--ink);
+}
+
 .table-header-sort {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   justify-content: flex-start;
+  min-height: 38px;
   width: 100%;
   border: 0;
   background: transparent;
@@ -1476,7 +1487,8 @@ strong {
   cursor: pointer;
   font: inherit;
   letter-spacing: inherit;
-  padding: 0;
+  padding: 10px 12px;
+  text-align: left;
   text-transform: inherit;
 }
 

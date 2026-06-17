@@ -1468,6 +1468,8 @@ strong {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  justify-content: flex-start;
+  width: 100%;
   border: 0;
   background: transparent;
   color: inherit;

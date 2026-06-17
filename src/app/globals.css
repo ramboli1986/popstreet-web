@@ -1482,6 +1482,10 @@ strong {
   color: var(--ink);
 }
 
+.table-header-sort.active {
+  color: var(--ink);
+}
+
 .admin-table td {
   border-bottom: 1px solid var(--line-soft);
   padding: 11px 12px;

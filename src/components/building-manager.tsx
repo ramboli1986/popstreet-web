@@ -98,7 +98,12 @@ type BuildingAreaSelectOption = {
 type UnitStatusFilter = "all" | "listed" | "unlisted";
 type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 type BuildingUnitListFilter = "all" | "listed" | "unlisted";
-type BuildingSortKey = "updated" | "company" | "year_built";
+type BuildingSortDirection = "asc" | "desc";
+type BuildingSortKey = "updated" | "name" | "location" | "company" | "total_units" | "total_floors" | "year_built";
+type BuildingSortState = {
+  direction: BuildingSortDirection;
+  key: BuildingSortKey;
+};
 type BuildingServiceOption = {
   title: string;
   label: string;
@@ -175,6 +180,16 @@ const leaseMonthOptions = Array.from({ length: 15 }, (_item, index) => index + 1
 const freeMonthOptions = Array.from({ length: 13 }, (_item, index) => index * 0.5);
 const buildingBatchSize = 25;
 const unitBatchSize = 25;
+const defaultBuildingSortState: BuildingSortState = { key: "updated", direction: "desc" };
+const buildingSortOptions: Array<{ key: BuildingSortKey }> = [
+  { key: "updated" },
+  { key: "name" },
+  { key: "location" },
+  { key: "company" },
+  { key: "total_units" },
+  { key: "total_floors" },
+  { key: "year_built" }
+];
 const preferredMapRegionValues = [
   "parent:nj",
   "parent:manhattan-downtown",
@@ -221,7 +236,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const [companyFilter, setCompanyFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState("all");
   const [isLocationMenuOpen, setIsLocationMenuOpen] = useState(false);
-  const [buildingSortKey, setBuildingSortKey] = useState<BuildingSortKey>("updated");
+  const [buildingSort, setBuildingSort] = useState<BuildingSortState>(defaultBuildingSortState);
   const [unitSearch, setUnitSearch] = useState("");
   const [unitBuildingFilter, setUnitBuildingFilter] = useState("all");
   const [unitStatusFilter, setUnitStatusFilter] = useState<UnitStatusFilter>("listed");
@@ -354,7 +369,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
 
   useEffect(() => {
     setVisibleBuildingCount(buildingBatchSize);
-  }, [buildingSortKey, companyFilter, locationFilter, search]);
+  }, [buildingSort, companyFilter, locationFilter, search]);
 
   useEffect(() => {
     setVisibleUnitCount(unitBatchSize);
@@ -476,8 +491,8 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
   const filteredBuildings = useMemo(() => {
     return buildingsMatchingNonLocationFilters
       .filter((building) => buildingMatchesLocationFilter(building, locationFilter))
-      .sort((first, second) => compareBuildingsForSort(first, second, buildingSortKey));
-  }, [buildingSortKey, buildingsMatchingNonLocationFilters, locationFilter]);
+      .sort((first, second) => compareBuildingsForSort(first, second, buildingSort));
+  }, [buildingSort, buildingsMatchingNonLocationFilters, locationFilter]);
 
   const filteredCompanyCount = useMemo(() => {
     const companyValues = new Set<string>();
@@ -497,6 +512,18 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
         : geocodedBuildings.filter((building) => buildingMatchesMapRegion(building, selectedMapArea)),
     [geocodedBuildings, selectedMapArea]
   );
+
+  function changeBuildingSort(key: BuildingSortKey) {
+    setBuildingSort((current) =>
+      current.key === key
+        ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { key, direction: defaultBuildingSortDirection(key) }
+    );
+  }
+
+  function selectBuildingSortKey(key: BuildingSortKey) {
+    setBuildingSort({ key, direction: defaultBuildingSortDirection(key) });
+  }
 
   const filteredUnits = useMemo(() => {
     const query = unitSearch.trim().toLowerCase();
@@ -1305,12 +1332,14 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
             ) : null}
           </div>
           <select
-            value={buildingSortKey}
-            onChange={(event) => setBuildingSortKey(event.target.value as BuildingSortKey)}
+            value={buildingSort.key}
+            onChange={(event) => selectBuildingSortKey(event.target.value as BuildingSortKey)}
           >
-            <option value="updated">{t("manager.sortRecentlyUpdated")}</option>
-            <option value="company">{t("manager.sortCompany")}</option>
-            <option value="year_built">{t("manager.sortYearBuilt")}</option>
+            {buildingSortOptions.map((option) => (
+              <option key={option.key} value={option.key}>
+                {buildingSortOptionLabel(option.key, language, t)}
+              </option>
+            ))}
           </select>
         </section>
       )}
@@ -1343,7 +1372,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
               canEdit={canEdit}
               filteredCount={filteredBuildings.length}
               selectedBuilding={selectedBuilding}
-              sortKey={buildingSortKey}
+              sort={buildingSort}
               onLoadMore={(event) =>
                 handleScrollLoadMore(
                   event,
@@ -1353,7 +1382,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
                   buildingBatchSize
                 )
               }
-              onSortChange={setBuildingSortKey}
+              onSortChange={changeBuildingSort}
               onOpen={openBuildingEditor}
               onOpenUnits={openUnitList}
             />
@@ -1419,7 +1448,7 @@ function BuildingTable({
   canEdit,
   filteredCount,
   selectedBuilding,
-  sortKey,
+  sort,
   onLoadMore,
   onSortChange,
   onOpen,
@@ -1429,7 +1458,7 @@ function BuildingTable({
   canEdit: boolean;
   filteredCount: number;
   selectedBuilding: Building | null;
-  sortKey: BuildingSortKey;
+  sort: BuildingSortState;
   onLoadMore: (event: UIEvent<HTMLDivElement>) => void;
   onSortChange: (sortKey: BuildingSortKey) => void;
   onOpen: (building: Building) => void;
@@ -1444,31 +1473,13 @@ function BuildingTable({
       <table className="admin-table">
         <thead>
           <tr>
-            <th>No.</th>
-            <th>Building</th>
-            <th>Location</th>
-            <th>
-              <button
-                className="table-header-sort"
-                onClick={() => onSortChange("company")}
-                type="button"
-              >
-                Company
-                {sortKey === "company" ? <ArrowDown size={13} /> : null}
-              </button>
-            </th>
-            <th>Units number</th>
-            <th>Floors</th>
-            <th>
-              <button
-                className="table-header-sort"
-                onClick={() => onSortChange("year_built")}
-                type="button"
-              >
-                Year built
-                {sortKey === "year_built" ? <ArrowDown size={13} /> : null}
-              </button>
-            </th>
+            <SortableBuildingHeader label="No." sort={sort} sortKey="updated" onSortChange={onSortChange} />
+            <SortableBuildingHeader label="Building" sort={sort} sortKey="name" onSortChange={onSortChange} />
+            <SortableBuildingHeader label="Location" sort={sort} sortKey="location" onSortChange={onSortChange} />
+            <SortableBuildingHeader label="Company" sort={sort} sortKey="company" onSortChange={onSortChange} />
+            <SortableBuildingHeader label="Units number" sort={sort} sortKey="total_units" onSortChange={onSortChange} />
+            <SortableBuildingHeader label="Floors" sort={sort} sortKey="total_floors" onSortChange={onSortChange} />
+            <SortableBuildingHeader label="Year built" sort={sort} sortKey="year_built" onSortChange={onSortChange} />
             <th>Actions</th>
           </tr>
         </thead>
@@ -1545,6 +1556,41 @@ function BuildingTable({
       </table>
       <LoadMoreStatus shown={buildings.length} total={filteredCount} />
     </div>
+  );
+}
+
+function SortableBuildingHeader({
+  label,
+  sort,
+  sortKey,
+  onSortChange
+}: {
+  label: string;
+  sort: BuildingSortState;
+  sortKey: BuildingSortKey;
+  onSortChange: (sortKey: BuildingSortKey) => void;
+}) {
+  const isActive = sort.key === sortKey;
+  const ariaSort = isActive ? (sort.direction === "asc" ? "ascending" : "descending") : "none";
+  const DirectionIcon = sort.direction === "asc" ? ArrowUp : ArrowDown;
+  const nextDirection = isActive
+    ? sort.direction === "asc"
+      ? "desc"
+      : "asc"
+    : defaultBuildingSortDirection(sortKey);
+
+  return (
+    <th aria-sort={ariaSort}>
+      <button
+        aria-label={`${label}: sort ${nextDirection === "asc" ? "ascending" : "descending"}`}
+        className={`table-header-sort${isActive ? " active" : ""}`}
+        onClick={() => onSortChange(sortKey)}
+        type="button"
+      >
+        {label}
+        {isActive ? <DirectionIcon size={13} strokeWidth={2.4} /> : null}
+      </button>
+    </th>
   );
 }
 
@@ -3488,31 +3534,84 @@ function formatNullableCount(value: number | null | undefined) {
   return value == null ? "—" : value.toLocaleString();
 }
 
-function compareBuildingsForSort(first: Building, second: Building, sortKey: BuildingSortKey) {
-  if (sortKey === "company") {
-    return (
-      buildingCompanyName(first).localeCompare(buildingCompanyName(second)) ||
-      first.name.localeCompare(second.name) ||
-      first.address.localeCompare(second.address)
-    );
-  }
-
-  if (sortKey === "year_built") {
-    return (
-      nullableNumberDescending(first.year_built, second.year_built) ||
-      first.name.localeCompare(second.name) ||
-      first.address.localeCompare(second.address)
-    );
-  }
-
-  return (
-    second.updated_at.localeCompare(first.updated_at) ||
-    first.name.localeCompare(second.name) ||
-    first.address.localeCompare(second.address)
-  );
+function defaultBuildingSortDirection(key: BuildingSortKey): BuildingSortDirection {
+  return key === "name" || key === "location" || key === "company" ? "asc" : "desc";
 }
 
-function nullableNumberDescending(first: number | null | undefined, second: number | null | undefined) {
+function buildingSortOptionLabel(
+  key: BuildingSortKey,
+  language: "en" | "zh",
+  t: ReturnType<typeof useI18n>["t"]
+) {
+  if (key === "updated") {
+    return t("manager.sortRecentlyUpdated");
+  }
+
+  if (key === "company") {
+    return t("manager.sortCompany");
+  }
+
+  if (key === "year_built") {
+    return t("manager.sortYearBuilt");
+  }
+
+  const labels: Record<Exclude<BuildingSortKey, "updated" | "company" | "year_built">, { en: string; zh: string }> = {
+    name: { en: "Sort: building", zh: "排序：大楼" },
+    location: { en: "Sort: location", zh: "排序：位置" },
+    total_units: { en: "Sort: units", zh: "排序：单元数" },
+    total_floors: { en: "Sort: floors", zh: "排序：楼层" }
+  };
+
+  return labels[key][language];
+}
+
+function compareBuildingsForSort(first: Building, second: Building, sort: BuildingSortState) {
+  const fallback =
+    compareNullableText(first.name, second.name, "asc") ||
+    compareNullableText(first.address, second.address, "asc") ||
+    first.id.localeCompare(second.id);
+
+  if (sort.key === "name") {
+    return (
+      compareNullableText(first.name, second.name, sort.direction) ||
+      compareNullableText(first.address, second.address, "asc") ||
+      first.id.localeCompare(second.id)
+    );
+  }
+
+  if (sort.key === "location") {
+    return (
+      compareNullableText(buildingListAreaTitle(first), buildingListAreaTitle(second), sort.direction) ||
+      compareNullableText(first.city, second.city, sort.direction) ||
+      compareNullableText(first.state, second.state, sort.direction) ||
+      fallback
+    );
+  }
+
+  if (sort.key === "company") {
+    return compareNullableText(buildingCompanyName(first), buildingCompanyName(second), sort.direction) || fallback;
+  }
+
+  if (sort.key === "total_units") {
+    return compareNullableNumber(first.total_units, second.total_units, sort.direction) || fallback;
+  }
+
+  if (sort.key === "total_floors") {
+    return compareNullableNumber(first.total_floors, second.total_floors, sort.direction) || fallback;
+  }
+
+  if (sort.key === "year_built") {
+    return compareNullableNumber(first.year_built, second.year_built, sort.direction) || fallback;
+  }
+
+  return compareNullableText(first.updated_at, second.updated_at, sort.direction) || fallback;
+}
+
+function compareNullableNumber(
+  first: number | null | undefined,
+  second: number | null | undefined,
+  direction: BuildingSortDirection
+) {
   if (first == null && second == null) {
     return 0;
   }
@@ -3525,7 +3624,35 @@ function nullableNumberDescending(first: number | null | undefined, second: numb
     return -1;
   }
 
-  return second - first;
+  return direction === "asc" ? first - second : second - first;
+}
+
+function compareNullableText(
+  first: string | null | undefined,
+  second: string | null | undefined,
+  direction: BuildingSortDirection
+) {
+  const normalizedFirst = first?.trim() ?? "";
+  const normalizedSecond = second?.trim() ?? "";
+
+  if (!normalizedFirst && !normalizedSecond) {
+    return 0;
+  }
+
+  if (!normalizedFirst) {
+    return 1;
+  }
+
+  if (!normalizedSecond) {
+    return -1;
+  }
+
+  const result = normalizedFirst.localeCompare(normalizedSecond, undefined, {
+    numeric: true,
+    sensitivity: "base"
+  });
+
+  return direction === "asc" ? result : -result;
 }
 
 function buildingCompanyFilterValue(building: Building) {

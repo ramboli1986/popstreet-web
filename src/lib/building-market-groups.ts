@@ -342,12 +342,16 @@ export function buildingLocationFilterOptions(buildings: BuildingMarketSource[])
   buildings.forEach((building) => {
     const parent = buildingLocationParentFor(building);
     const child = buildingLocationAreaChildFor(building, parent);
-    const childCounts = childCountsByParent.get(parent) ?? new Map<string, { label: string; count: number }>();
-    const childCount = childCounts.get(child.value) ?? { label: child.label, count: 0 };
 
     parentCounts.set(parent, (parentCounts.get(parent) ?? 0) + 1);
-    childCounts.set(child.value, { ...childCount, count: childCount.count + 1 });
-    childCountsByParent.set(parent, childCounts);
+
+    if (child) {
+      const childCounts = childCountsByParent.get(parent) ?? new Map<string, { label: string; count: number }>();
+      const childCount = childCounts.get(child.value) ?? { label: child.label, count: 0 };
+
+      childCounts.set(child.value, { ...childCount, count: childCount.count + 1 });
+      childCountsByParent.set(parent, childCounts);
+    }
   });
 
   const options: BuildingLocationFilterOption[] = [];
@@ -385,7 +389,7 @@ export function buildingMatchesLocationFilter(building: BuildingMarketSource, lo
 
   const child = buildingLocationAreaChildFor(building, parent);
 
-  return locationFilter === childFilterValue(parent, child.value);
+  return child ? locationFilter === childFilterValue(parent, child.value) : false;
 }
 
 export function buildingLocationFilterValueExists(options: BuildingLocationFilterOption[], locationFilter: string) {
@@ -437,7 +441,7 @@ function childOptionsForParent(
 function buildingLocationAreaChildFor(
   building: BuildingMarketSource,
   parent: BuildingLocationParentValue
-): BuildingLocationChild {
+): BuildingLocationChild | null {
   const rawLabel =
     parent === "brooklyn" && normalizeLocationText(building.area) === "brooklyn" && building.neighborhoods?.name
       ? building.neighborhoods.name
@@ -445,10 +449,31 @@ function buildingLocationAreaChildFor(
   const label = canonicalBuildingAreaLabel(rawLabel, building.city, building.state);
 
   if (label) {
-    return { value: buildingLocationAreaChildValue(label, parent), label };
+    const value = buildingLocationAreaChildValue(label, parent);
+
+    if (isParentAreaChild(parent, value, label)) {
+      return null;
+    }
+
+    return { value, label };
+  }
+
+  if (isManhattanParent(parent)) {
+    return null;
   }
 
   return buildingLocationChildFor(building, parent);
+}
+
+function isParentAreaChild(parent: BuildingLocationParentValue, childValue: string, childLabel: string) {
+  if (!isManhattanParent(parent)) {
+    return false;
+  }
+
+  const parentLabel = fixedParents.find((option) => option.value === parent)?.label;
+  const parentChildValue = parent.replace(/^manhattan-/, "");
+
+  return childValue === parentChildValue || normalizeLocationText(childLabel) === normalizeLocationText(parentLabel);
 }
 
 function buildingLocationAreaChildValue(label: string, parent: BuildingLocationParentValue) {
@@ -468,7 +493,7 @@ function buildingLocationChildFor(
   if (parent === "nj") {
     const rawLabel = building.area || building.neighborhoods?.name || building.city || "Other";
     const label = canonicalBuildingAreaLabel(rawLabel, building.city, building.state) || rawLabel;
-    return { value: slugifyLocation(label), label };
+    return { value: buildingLocationAreaChildValue(label, parent), label };
   }
 
   if (isManhattanParent(parent)) {

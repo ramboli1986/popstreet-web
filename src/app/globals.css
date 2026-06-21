@@ -2526,6 +2526,12 @@ strong {
   gap: 4px;
 }
 
+.exclusive-benefit-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 116px;
+  gap: 8px;
+}
+
 .unit-actions {
   align-content: start;
 }

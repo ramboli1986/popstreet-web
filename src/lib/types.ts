@@ -315,6 +315,7 @@ export type UnitListing = {
   lease_months: number;
   free_months: number;
   cash_back_cents: number;
+  bonus_cents: number;
   final_price_cents: number | null;
   available_from: string | null;
   listed_at: string;

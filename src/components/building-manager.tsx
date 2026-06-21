@@ -100,6 +100,7 @@ type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 type BuildingUnitListFilter = "all" | "listed" | "unlisted";
 type BuildingSortDirection = "asc" | "desc";
 type BuildingSortKey = "updated" | "name" | "location" | "company" | "total_units" | "total_floors" | "year_built";
+type ExclusiveBenefitType = "cashback" | "bonus";
 type BuildingSortState = {
   direction: BuildingSortDirection;
   key: BuildingSortKey;
@@ -994,6 +995,7 @@ export function BuildingManager({ profile, mode }: BuildingManagerProps) {
       net_price_cents: listing.net_price_cents,
       free_months: listing.free_months,
       cash_back_cents: listing.cash_back_cents,
+      bonus_cents: listing.bonus_cents,
       final_price_cents: listing.final_price_cents,
       available_from: listing.available_from,
       source: listing.source || "admin",
@@ -2618,7 +2620,7 @@ function UnitListingRow({
       <div className="unit-cell unit-summary-cell">
         <strong>{formatMoneyFromCents(listing.net_price_cents)}</strong>
         <span>Market {formatMoneyFromCents(listing.market_price_cents)}</span>
-        <span>Cashback {formatMoneyFromCents(listing.cash_back_cents)}</span>
+        <span>{exclusiveBenefitLabel(listing)}</span>
       </div>
       <div className="unit-cell unit-summary-cell">
         <strong>{leaseDealLabel(listing.lease_months, listing.free_months) || "No deal"}</strong>
@@ -2682,6 +2684,32 @@ function UnitEditorDialog({
 
   function updateListing<K extends keyof UnitListing>(key: K, value: UnitListing[K]) {
     updateListingDraft({ [key]: value } as Pick<UnitListing, K>);
+  }
+
+  const listing = applyConcessionPricing(draft.listing ?? defaultListing(draft.id), leaseMonths);
+  const exclusiveBenefitType = benefitTypeForListing(listing);
+  const exclusiveBenefitAmountCents = exclusiveBenefitAmountForListing(listing, exclusiveBenefitType);
+
+  function updateExclusiveBenefitAmount(value: number | null) {
+    const amountCents = value ?? 0;
+
+    if (exclusiveBenefitType === "cashback") {
+      updateListingDraft({ cash_back_cents: amountCents, bonus_cents: 0 });
+      return;
+    }
+
+    updateListingDraft({ cash_back_cents: 0, bonus_cents: amountCents });
+  }
+
+  function updateExclusiveBenefitType(nextType: ExclusiveBenefitType) {
+    const amountCents = exclusiveBenefitAmountCents ?? 0;
+
+    if (nextType === "cashback") {
+      updateListingDraft({ cash_back_cents: amountCents, bonus_cents: 0 });
+      return;
+    }
+
+    updateListingDraft({ cash_back_cents: 0, bonus_cents: amountCents });
   }
 
   function updateLeaseMonths(nextLeaseMonths: number) {
@@ -2772,6 +2800,7 @@ function UnitEditorDialog({
         net_price_cents: listing.net_price_cents,
         free_months: listing.free_months,
         cash_back_cents: listing.cash_back_cents,
+        bonus_cents: listing.bonus_cents,
         final_price_cents: listing.final_price_cents,
         available_from: listing.available_from,
         source: listing.source || "admin",
@@ -2867,7 +2896,6 @@ function UnitEditorDialog({
     onClose();
   }
 
-  const listing = applyConcessionPricing(draft.listing ?? defaultListing(draft.id), leaseMonths);
   const totalTermMonths = leaseMonths + listing.free_months;
 
   return (
@@ -2971,14 +2999,15 @@ function UnitEditorDialog({
                 value={listing.market_price_cents}
                 onChange={(value) => updateListing("market_price_cents", value)}
               />
-              <CentsInput
-                disabled={!canEdit}
-                label="Cashback"
-                value={listing.cash_back_cents}
-                onChange={(value) => updateListing("cash_back_cents", value ?? 0)}
-              />
               <ReadonlyMoneyField label="Net price" value={listing.net_price_cents} />
-              <ReadonlyMoneyField label="Final price" value={listing.final_price_cents} />
+              <ExclusiveBenefitInput
+                disabled={!canEdit}
+                label="Exclusive benefit"
+                type={exclusiveBenefitType}
+                value={exclusiveBenefitAmountCents}
+                onAmountChange={updateExclusiveBenefitAmount}
+                onTypeChange={updateExclusiveBenefitType}
+              />
             </div>
           </section>
 
@@ -3404,6 +3433,42 @@ function CentsInput({
   );
 }
 
+function ExclusiveBenefitInput({
+  label,
+  value,
+  type,
+  onAmountChange,
+  onTypeChange,
+  disabled
+}: {
+  label: string;
+  value: number | null;
+  type: ExclusiveBenefitType;
+  onAmountChange: (value: number | null) => void;
+  onTypeChange: (value: ExclusiveBenefitType) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="compact-field exclusive-benefit-field">
+      <span>{label}</span>
+      <div className="exclusive-benefit-control">
+        <input
+          disabled={disabled}
+          min={0}
+          placeholder="0"
+          type="number"
+          value={value == null || value <= 0 ? "" : value / 100}
+          onChange={(event) => onAmountChange(event.target.value === "" ? null : Math.round(Number(event.target.value) * 100))}
+        />
+        <select disabled={disabled} value={type} onChange={(event) => onTypeChange(event.target.value as ExclusiveBenefitType)}>
+          <option value="cashback">Cashback</option>
+          <option value="bonus">Bonus</option>
+        </select>
+      </div>
+    </label>
+  );
+}
+
 function MonthSelect({
   label,
   value,
@@ -3810,6 +3875,7 @@ function defaultListing(unitID: string): UnitListing {
     lease_months: 12,
     free_months: 0,
     cash_back_cents: 0,
+    bonus_cents: 0,
     final_price_cents: null,
     available_from: null,
     listed_at: now,
@@ -3831,17 +3897,34 @@ function leaseMonthsFromListing(listing: UnitListing) {
 }
 
 function applyConcessionPricing(listing: UnitListing, leaseMonths: number): UnitListing {
+  const netPriceCents = calculateNetPriceCents(listing.market_price_cents, leaseMonths, listing.free_months);
+
   return {
     ...listing,
     lease_months: leaseMonths,
-    net_price_cents: calculateNetPriceCents(listing.market_price_cents, leaseMonths, listing.free_months),
-    final_price_cents: calculateFinalPriceCents(
-      listing.market_price_cents,
-      leaseMonths,
-      listing.free_months,
-      listing.cash_back_cents
-    )
+    net_price_cents: netPriceCents,
+    final_price_cents: netPriceCents
   };
+}
+
+function benefitTypeForListing(listing: UnitListing): ExclusiveBenefitType {
+  return listing.bonus_cents > 0 ? "bonus" : "cashback";
+}
+
+function exclusiveBenefitAmountForListing(listing: UnitListing, type: ExclusiveBenefitType) {
+  return type === "bonus" ? listing.bonus_cents : listing.cash_back_cents;
+}
+
+function exclusiveBenefitLabel(listing: UnitListing) {
+  if (listing.cash_back_cents > 0) {
+    return `Cashback ${formatMoneyFromCents(listing.cash_back_cents)}`;
+  }
+
+  if (listing.bonus_cents > 0) {
+    return `Bonus ${formatMoneyFromCents(listing.bonus_cents)}`;
+  }
+
+  return "No exclusive benefit";
 }
 
 function leaseDealLabel(leaseMonths: number, freeMonths: number) {
@@ -3881,19 +3964,6 @@ function calculateNetPriceCents(marketPriceCents: number | null, leaseMonths: nu
   return Math.round((marketPriceCents * leaseMonths) / totalTermMonths);
 }
 
-function calculateFinalPriceCents(
-  marketPriceCents: number | null,
-  leaseMonths: number,
-  freeMonths: number,
-  cashBackCents: number
-) {
-  if (!marketPriceCents || marketPriceCents <= 0) {
-    return null;
-  }
-
-  const totalTermMonths = Math.max(1, leaseMonths + freeMonths);
-  return Math.max(0, Math.round((marketPriceCents * leaseMonths - cashBackCents) / totalTermMonths));
-}
 
 function formatMonthValue(value: number) {
   return Number.isInteger(value) ? `${value}` : value.toFixed(1).replace(/\.0$/, "");

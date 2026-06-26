@@ -100,7 +100,7 @@ type UnitBedroomFilter = "all" | "0" | "1" | "2" | "3plus";
 type BuildingUnitListFilter = "all" | "listed" | "unlisted";
 type BuildingSortDirection = "asc" | "desc";
 type BuildingSortKey = "updated" | "name" | "location" | "company" | "total_units" | "total_floors" | "year_built";
-type ExclusiveBenefitType = "cashback" | "bonus";
+type MovingBonusType = "cashback" | "bonus";
 type BuildingSortState = {
   direction: BuildingSortDirection;
   key: BuildingSortKey;
@@ -2620,7 +2620,7 @@ function UnitListingRow({
       <div className="unit-cell unit-summary-cell">
         <strong>{formatMoneyFromCents(listing.net_price_cents)}</strong>
         <span>Market {formatMoneyFromCents(listing.market_price_cents)}</span>
-        <span>{exclusiveBenefitLabel(listing)}</span>
+        <span>{movingBonusLabel(listing)}</span>
       </div>
       <div className="unit-cell unit-summary-cell">
         <strong>{leaseDealLabel(listing.lease_months, listing.free_months) || "No deal"}</strong>
@@ -2687,13 +2687,13 @@ function UnitEditorDialog({
   }
 
   const listing = applyConcessionPricing(draft.listing ?? defaultListing(draft.id), leaseMonths);
-  const exclusiveBenefitType = benefitTypeForListing(listing);
-  const exclusiveBenefitAmountCents = exclusiveBenefitAmountForListing(listing, exclusiveBenefitType);
+  const movingBonusType = benefitTypeForListing(listing);
+  const movingBonusAmountCents = movingBonusAmountForListing(listing, movingBonusType);
 
-  function updateExclusiveBenefitAmount(value: number | null) {
+  function updateMovingBonusAmount(value: number | null) {
     const amountCents = value ?? 0;
 
-    if (exclusiveBenefitType === "cashback") {
+    if (movingBonusType === "cashback") {
       updateListingDraft({ cash_back_cents: amountCents, bonus_cents: 0 });
       return;
     }
@@ -2701,8 +2701,8 @@ function UnitEditorDialog({
     updateListingDraft({ cash_back_cents: 0, bonus_cents: amountCents });
   }
 
-  function updateExclusiveBenefitType(nextType: ExclusiveBenefitType) {
-    const amountCents = exclusiveBenefitAmountCents ?? 0;
+  function updateMovingBonusType(nextType: MovingBonusType) {
+    const amountCents = movingBonusAmountCents ?? 0;
 
     if (nextType === "cashback") {
       updateListingDraft({ cash_back_cents: amountCents, bonus_cents: 0 });
@@ -3000,13 +3000,13 @@ function UnitEditorDialog({
                 onChange={(value) => updateListing("market_price_cents", value)}
               />
               <ReadonlyMoneyField label="Net price" value={listing.net_price_cents} />
-              <ExclusiveBenefitInput
+              <MovingBonusInput
                 disabled={!canEdit}
-                label="Exclusive benefit"
-                type={exclusiveBenefitType}
-                value={exclusiveBenefitAmountCents}
-                onAmountChange={updateExclusiveBenefitAmount}
-                onTypeChange={updateExclusiveBenefitType}
+                label="Move-in Bonus"
+                type={movingBonusType}
+                value={movingBonusAmountCents}
+                onAmountChange={updateMovingBonusAmount}
+                onTypeChange={updateMovingBonusType}
               />
             </div>
           </section>
@@ -3433,7 +3433,7 @@ function CentsInput({
   );
 }
 
-function ExclusiveBenefitInput({
+function MovingBonusInput({
   label,
   value,
   type,
@@ -3443,9 +3443,9 @@ function ExclusiveBenefitInput({
 }: {
   label: string;
   value: number | null;
-  type: ExclusiveBenefitType;
+  type: MovingBonusType;
   onAmountChange: (value: number | null) => void;
-  onTypeChange: (value: ExclusiveBenefitType) => void;
+  onTypeChange: (value: MovingBonusType) => void;
   disabled?: boolean;
 }) {
   return (
@@ -3460,9 +3460,9 @@ function ExclusiveBenefitInput({
           value={value == null || value <= 0 ? "" : value / 100}
           onChange={(event) => onAmountChange(event.target.value === "" ? null : Math.round(Number(event.target.value) * 100))}
         />
-        <select disabled={disabled} value={type} onChange={(event) => onTypeChange(event.target.value as ExclusiveBenefitType)}>
-          <option value="cashback">Cashback</option>
-          <option value="bonus">Bonus</option>
+        <select disabled={disabled} value={type} onChange={(event) => onTypeChange(event.target.value as MovingBonusType)}>
+          <option value="cashback">Move-in Bonus</option>
+          <option value="bonus">Move-in Bonus</option>
         </select>
       </div>
     </label>
@@ -3907,24 +3907,24 @@ function applyConcessionPricing(listing: UnitListing, leaseMonths: number): Unit
   };
 }
 
-function benefitTypeForListing(listing: UnitListing): ExclusiveBenefitType {
+function benefitTypeForListing(listing: UnitListing): MovingBonusType {
   return listing.bonus_cents > 0 ? "bonus" : "cashback";
 }
 
-function exclusiveBenefitAmountForListing(listing: UnitListing, type: ExclusiveBenefitType) {
+function movingBonusAmountForListing(listing: UnitListing, type: MovingBonusType) {
   return type === "bonus" ? listing.bonus_cents : listing.cash_back_cents;
 }
 
-function exclusiveBenefitLabel(listing: UnitListing) {
+function movingBonusLabel(listing: UnitListing) {
   if (listing.cash_back_cents > 0) {
-    return `Cashback ${formatMoneyFromCents(listing.cash_back_cents)}`;
+    return `Move-in Bonus ${formatMoneyFromCents(listing.cash_back_cents)}`;
   }
 
   if (listing.bonus_cents > 0) {
-    return `Bonus ${formatMoneyFromCents(listing.bonus_cents)}`;
+    return `Move-in Bonus ${formatMoneyFromCents(listing.bonus_cents)}`;
   }
 
-  return "No exclusive benefit";
+  return "No move-in bonus";
 }
 
 function leaseDealLabel(leaseMonths: number, freeMonths: number) {

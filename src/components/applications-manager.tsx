@@ -39,8 +39,8 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
   under_review: "LO reviewing",
   accepted: "Accepted",
   rejected: "Rejected",
-  cashback_pending: "Cashback pending",
-  cashback_paid: "Cashback paid",
+  cashback_pending: "Moving bonus pending",
+  cashback_paid: "Moving bonus paid",
   cancelled: "Cancelled",
   no_response: "No response"
 };
@@ -49,7 +49,7 @@ const STATUS_LABELS: Record<ApplicationStatus, string> = {
  * Color buckets mirror the iOS app's pill palette family, with finer per-status
  * hues so ops can still scan their queue:
  *   amber   = "in flight, our side"      (submitted, ops_in_progress)
- *   purple  = "user's turn / cashback"   (link_ready, cashback_pending)
+ *   purple  = "user's turn / bonus"      (link_ready, cashback_pending)
  *   blue    = "waiting on LO"            (submitted_to_lo, under_review)
  *   green   = "deal won"                 (accepted, cashback_paid)
  *   gray    = "terminal"                 (rejected, cancelled, no_response)
@@ -83,8 +83,8 @@ const STATUS_NEXT_STEPS: Record<ApplicationStatus, string> = {
   submitted_to_lo: "Verify proof against LO · accept or reject proof",
   proof_rejected: "Wait for user to re-upload a valid screenshot",
   under_review: "Wait for LO decision",
-  accepted: "Pay cashback once lease is signed",
-  cashback_pending: "Send cashback · mark paid",
+  accepted: "Pay move-in bonus once lease is signed",
+  cashback_pending: "Send move-in bonus · mark paid",
   cashback_paid: "Done",
   rejected: "Closed — no further action",
   cancelled: "Closed — no further action",
@@ -113,8 +113,8 @@ const STATUS_FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: "proof_rejected", label: "Proof rejected" },
   { value: "under_review", label: "LO reviewing" },
   { value: "accepted", label: "Accepted" },
-  { value: "cashback_pending", label: "Cashback pending" },
-  { value: "cashback_paid", label: "Cashback paid" },
+  { value: "cashback_pending", label: "Moving bonus pending" },
+  { value: "cashback_paid", label: "Moving bonus paid" },
   { value: "rejected", label: "Rejected" },
   { value: "cancelled", label: "Cancelled" },
   { value: "no_response", label: "No response" }
@@ -317,15 +317,15 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
     });
   }
 
-  async function setCashbackAndPay(application: Application) {
+  async function setMoveInBonusAndPay(application: Application) {
     const raw = window.prompt(
-      "Enter cashback amount in USD (e.g. 1500). Leave blank to cancel.",
+      "Enter move-in bonus amount in USD (e.g. 1500). Leave blank to cancel.",
       application.cashback_amount_cents ? String(application.cashback_amount_cents / 100) : ""
     );
     if (!raw) return;
     const dollars = Number(raw.trim());
     if (!Number.isFinite(dollars) || dollars < 0) {
-      setErrorMessage("Cashback must be a non-negative number.");
+      setErrorMessage("Moving bonus must be a non-negative number.");
       return;
     }
     await patch(application.id, {
@@ -484,18 +484,18 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
       case "accepted":
         return (
           <>
-            <button className="button compact-button" disabled={disabled} onClick={() => setCashbackAndPay(application)} type="button">
-              Pay cashback
+            <button className="button compact-button" disabled={disabled} onClick={() => setMoveInBonusAndPay(application)} type="button">
+              Pay move-in bonus
             </button>
             <button className="ghost-button compact-button" disabled={disabled} onClick={() => markStatus(application, "cashback_pending")} type="button">
-              Mark cashback pending
+              Mark move-in bonus pending
             </button>
           </>
         );
       case "cashback_pending":
         return (
-          <button className="button compact-button" disabled={disabled} onClick={() => setCashbackAndPay(application)} type="button">
-            Pay cashback
+          <button className="button compact-button" disabled={disabled} onClick={() => setMoveInBonusAndPay(application)} type="button">
+            Pay move-in bonus
           </button>
         );
       default:
@@ -590,7 +590,7 @@ export function ApplicationsManager({ profile }: ApplicationsManagerProps) {
                 <th>Applicant</th>
                 <th>Unit</th>
                 <th>Proof</th>
-                <th>Cashback</th>
+                <th>Move-in Bonus</th>
                 <th>Updated</th>
               </tr>
             </thead>
@@ -924,7 +924,7 @@ function ApplicationDrawer({
             )}
           </Section>
 
-          <Section title="Cashback">
+          <Section title="Move-in Bonus">
             <KV
               label="Amount"
               value={

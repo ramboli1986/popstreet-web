@@ -9,6 +9,7 @@ import {
   Building2,
   ChevronRight,
   ClipboardList,
+  DatabaseZap,
   DoorOpen,
   LayoutDashboard,
   LogOut,
@@ -24,11 +25,13 @@ import { AccountsManager } from "./accounts-manager";
 import { AIConfigPage } from "./ai-config-page";
 import { AIDestinationsManager } from "./ai-destinations-manager";
 import { ApplicationsManager } from "./applications-manager";
+import { AvailabilityCrawlerDashboard } from "./availability-crawler-dashboard";
 import { BuildingManager } from "./building-manager";
 import { CompanyManager } from "./company-manager";
 import { Dashboard } from "./dashboard";
 import { MobileUsersManager } from "./mobile-users-manager";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
+import { withTimeout } from "@/lib/admin-session";
 import { canManageAccounts } from "@/lib/format";
 import { I18nProvider, useI18n } from "@/lib/i18n";
 import type { AccountProfile } from "@/lib/types";
@@ -40,6 +43,7 @@ type ViewKey =
   | "units"
   | "map"
   | "applications"
+  | "availabilityCrawler"
   | "mobileUsers"
   | "aiConfig"
   | "aiDestinations"
@@ -55,6 +59,7 @@ const routeByView: Record<ViewKey, string> = {
   units: "/units",
   map: "/map",
   applications: "/applications",
+  availabilityCrawler: "/availability-crawler",
   mobileUsers: "/mobile-users",
   aiConfig: "/ai-config",
   aiDestinations: "/ai-destinations",
@@ -77,6 +82,9 @@ function viewFromPath(pathname: string): ViewKey {
   if (pathname.startsWith("/applications")) {
     return "applications";
   }
+  if (pathname.startsWith("/availability-crawler")) {
+    return "availabilityCrawler";
+  }
   if (pathname.startsWith("/mobile-users")) {
     return "mobileUsers";
   }
@@ -90,15 +98,6 @@ function viewFromPath(pathname: string): ViewKey {
     return "accounts";
   }
   return "dashboard";
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_resolve, reject) => {
-      window.setTimeout(() => reject(new Error("Saved login session timed out. Please log in again.")), timeoutMs);
-    })
-  ]);
 }
 
 export function AdminApp({ initialView = "dashboard" }: AdminAppProps) {
@@ -180,12 +179,12 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
 
     async function boot() {
       try {
-        const { data } = await withTimeout(supabase.auth.getSession(), 5000);
+        const { data } = await withTimeout(supabase.auth.getSession(), 5000, "Saved login session timed out. Please log in again.");
         if (!isMounted) {
           return;
         }
         setSession(data.session);
-        await loadProfile(data.session);
+        await withTimeout(loadProfile(data.session), 5000, "Admin profile restore timed out. Please log in again.");
       } catch (sessionError) {
         if (!isMounted) {
           return;
@@ -224,6 +223,7 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
       { key: "units" as const, label: t("nav.units"), icon: DoorOpen },
       { key: "map" as const, label: t("nav.map"), icon: MapPinned },
       { key: "applications" as const, label: t("nav.applications"), icon: ClipboardList },
+      { key: "availabilityCrawler" as const, label: t("nav.availabilityCrawler"), icon: DatabaseZap },
       { key: "mobileUsers" as const, label: t("nav.mobileUsers"), icon: Smartphone, requiresAccountAdmin: true },
       { key: "aiConfig" as const, label: t("nav.aiConfig"), icon: Settings2 },
       { key: "aiDestinations" as const, label: t("nav.aiDestinations"), icon: Bot },
@@ -420,6 +420,7 @@ function AdminAppContent({ initialView = "dashboard" }: AdminAppProps) {
           {view === "units" ? <BuildingManager mode="units" profile={profile} /> : null}
           {view === "map" ? <BuildingManager mode="map" profile={profile} /> : null}
           {view === "applications" ? <ApplicationsManager profile={profile} /> : null}
+          {view === "availabilityCrawler" ? <AvailabilityCrawlerDashboard /> : null}
           {view === "mobileUsers" && canManageAccountAccess ? <MobileUsersManager /> : null}
           {view === "aiConfig" ? <AIConfigPage profile={profile} /> : null}
           {view === "aiDestinations" ? <AIDestinationsManager profile={profile} /> : null}

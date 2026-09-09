@@ -1,0 +1,25 @@
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - main [ref=e3]:
+    - generic [ref=e4]:
+      - generic "Language" [ref=e6]:
+        - button "EN" [ref=e7] [cursor=pointer]
+        - button "中文" [ref=e8] [cursor=pointer]
+      - generic [ref=e9]:
+        - generic [ref=e10]: P
+        - generic [ref=e11]:
+          - generic [ref=e12]: PopStreet Admin
+          - strong [ref=e13]: Building console
+      - heading "Welcome back." [level=1] [ref=e14]
+      - paragraph [ref=e15]: Manage buildings, units, listings, map coordinates, and account access from one place.
+      - generic [ref=e16]:
+        - generic [ref=e17]:
+          - generic [ref=e18]: Email
+          - textbox "Email" [ref=e23]
+        - generic [ref=e24]:
+          - generic [ref=e25]: Password
+          - textbox "Password" [ref=e31]
+        - button "Log in" [ref=e32] [cursor=pointer]
+      - paragraph [ref=e37]:
+        - text: Need an account?
+        - button "Register" [ref=e38] [cursor=pointer]

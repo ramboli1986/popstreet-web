@@ -1,0 +1,34 @@
+[     253ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/compiled/react-dom/cjs/react-dom-client.development.js:25630
+[     327ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/favicon.ico:0
+[     452ms] [VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://localhost:3000/availability-crawler:0
+[  192800ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/hot-reloader/app/hot-reloader-app.js:196
+[  193055ms] [LOG] [Fast Refresh] done in 255ms @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/report-hmr-latency.js:13
+[  201724ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/hot-reloader/app/hot-reloader-app.js:196
+[  201867ms] [LOG] [Fast Refresh] done in 143ms @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/report-hmr-latency.js:13
+[  912163ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/hot-reloader/app/hot-reloader-app.js:196
+[  912281ms] [LOG] [Fast Refresh] done in 117ms @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/report-hmr-latency.js:13
+[  912815ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/hot-reloader/app/hot-reloader-app.js:196
+[  913424ms] [LOG] [Fast Refresh] done in 609ms @ webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/dev/report-hmr-latency.js:13
+[  914072ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://localhost:3000/availability-crawler:0
+[  914220ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ webpack-internal:///(pages-dir-browser)/./node_modules/react-dom/cjs/react-dom-client.development.js:28004
+[  914275ms] TypeError: Cannot read properties of undefined (reading 'call')
+    at Object.c [as require] (file:///Users/boli/Proejcts/popstreet-web/.next/server/webpack-runtime.js:1:128)
+    at Object.require (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:21:17464)
+    at globalThis.__next_require__ (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:21:18033)
+    at d (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:2:135536)
+    at B (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:2:146377)
+    at J (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:2:149960)
+    at Array._fromJSON (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:2:152668)
+    at JSON.parse (<anonymous>)
+    at H (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:2:146082)
+    at L (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:2:145274)
+    at ep (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:2:157785)
+    at <unknown> (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:2:159037)
+    at em (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:2:159063)
+    at t (file:///Users/boli/Proejcts/popstreet-web/node_modules/next/dist/compiled/next-server/app-page.runtime.prod.js:2:159906)
+[  914275ms] [LOG] [HMR] connected @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/websocket.js:45
+[  919478ms] [LOG] [Fast Refresh] rebuilding @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/hot-reloader-pages.js:206
+[  919695ms] [WARNING] [Fast Refresh] performing full reload because your application had an unrecoverable error @ webpack-internal:///(pages-dir-browser)/./node_modules/next/dist/client/dev/hot-reloader/pages/hot-reloader-pages.js:347
+[  919899ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/_next/static/css/app/layout.css?v=1785467592962:0
+[  919900ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/_next/static/chunks/main-app.js?v=1785467592962:0
+[  919900ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://localhost:3000/_next/static/chunks/app-pages-internals.js:0

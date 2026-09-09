@@ -331,6 +331,141 @@ export type UnitWithListing = Unit & {
   listing?: UnitListing | null;
 };
 
+export type AvailabilityCrawlerDashboardRow = {
+  source_id: string;
+  building_id: string;
+  building_name: string;
+  area: string | null;
+  city: string | null;
+  state: string | null;
+  year_built: number | null;
+  total_units: number | null;
+  provider_key: string;
+  provider_label: string | null;
+  provider_status: string;
+  parser_strategy: string;
+  crawl_enabled: boolean;
+  requires_browser: boolean;
+  confidence: number;
+  website: string | null;
+  availability_url: string | null;
+  source_page_url: string | null;
+  last_verified_at: string | null;
+  last_crawled_at: string | null;
+  last_success_at: string | null;
+  consecutive_failures: number;
+  latest_run_item_id: string | null;
+  latest_run_id: string | null;
+  latest_status: string | null;
+  latest_started_at: string | null;
+  latest_finished_at: string | null;
+  latest_units_found: number | null;
+  latest_changes_detected: number | null;
+  latest_error: string | null;
+  change_count_7d: number;
+  price_change_count_7d: number;
+  went_unavailable_count_7d: number;
+};
+
+export type AvailabilityCrawlerProviderStat = {
+  provider_key: string;
+  provider_label: string | null;
+  parser_strategy: string;
+  source_count: number;
+  enabled_count: number;
+  concrete_source_count: number;
+  succeeded_source_count: number;
+  failing_source_count: number;
+  latest_crawled_at: string | null;
+  latest_success_at: string | null;
+};
+
+export type AvailabilityCrawlerAutomationSettings = {
+  id: number;
+  automation_enabled: boolean;
+  auto_publish_enabled: boolean;
+  schedule_label: string;
+  schedule_timezone: string;
+  market: "NJ" | "NY" | "ALL";
+  include_browser: boolean;
+  max_sources: number;
+  minimum_success_ratio: number;
+  maximum_failed_count: number;
+  minimum_observation_count: number;
+  last_scheduled_attempt_at: string | null;
+  last_scheduled_status: string;
+  last_scheduled_message: string | null;
+  last_run_id: string | null;
+  last_publish_run_id: string | null;
+  last_publish_result: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AvailabilityCrawlRun = {
+  id: string;
+  trigger_source: string;
+  status: string;
+  crawler_version: string | null;
+  provider_key: string | null;
+  parser_strategy: string | null;
+  started_at: string;
+  finished_at: string | null;
+  source_count: number;
+  success_count: number;
+  failed_count: number;
+  skipped_count: number;
+  unavailable_count: number;
+  observation_count: number;
+  changed_count: number;
+  new_listing_count: number;
+  price_change_count: number;
+  leased_count: number;
+  error: string | null;
+};
+
+export type AvailabilityCrawlRunItem = {
+  id: string;
+  run_id: string;
+  source_id: string | null;
+  building_id: string;
+  provider_key: string;
+  parser_strategy: string;
+  status: string;
+  snapshot_status?: "unknown" | "partial" | "complete" | "confirmed_empty";
+  validation?: Record<string, unknown> | null;
+  committed_at?: string | null;
+  attempt_id?: string | null;
+  lease_expires_at?: string | null;
+  heartbeat_at?: string | null;
+  started_at: string;
+  finished_at: string | null;
+  units_found: number;
+  observations_created: number;
+  changes_detected: number;
+  error: string | null;
+  buildings: {
+    name: string | null;
+    area: string | null;
+    city: string | null;
+    state: string | null;
+  } | null;
+};
+
+export type AvailabilityChangeEvent = {
+  id: string;
+  run_id: string | null;
+  run_item_id: string | null;
+  source_id: string | null;
+  building_id: string;
+  provider_unit_key: string | null;
+  event_type: string;
+  old_payload: Record<string, unknown>;
+  new_payload: Record<string, unknown>;
+  happened_at: string;
+  buildings?: Pick<Building, "name" | "area" | "city" | "state"> | Pick<Building, "name" | "area" | "city" | "state">[] | null;
+};
+
 export type BuildingStats = {
   totalBuildings: number;
   activeBuildings: number;

@@ -1,6 +1,8 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { crawlerMessages } from "./availability-crawler-messages";
+import { crawlerHelperMessages } from "./availability-crawler-helper-messages";
 
 export type Language = "en" | "zh";
 
@@ -12,6 +14,8 @@ const storageKey = "popstreet.admin.language";
 
 const dictionaries: Record<Language, TranslationDictionary> = {
   en: {
+    crawler: crawlerMessages.en,
+    crawlerHelpers: crawlerHelperMessages.en,
     views: {
       dashboard: "Overview",
       building: "Buildings",
@@ -371,6 +375,8 @@ const dictionaries: Record<Language, TranslationDictionary> = {
     }
   },
   zh: {
+    crawler: crawlerMessages.zh,
+    crawlerHelpers: crawlerHelperMessages.zh,
     views: {
       dashboard: "总览",
       building: "大楼",

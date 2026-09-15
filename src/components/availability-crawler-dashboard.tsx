@@ -23,7 +23,7 @@ import {
   type AvailabilityCrawlerManualReview,
 } from "@/lib/availability-crawler-manual-workflow";
 import {
-  availabilityCrawlerRegionOptions,
+  getAvailabilityCrawlerRegionOptions,
   buildAvailabilityCrawlerOverviewCards,
   canQueueCrawlerRun,
   canTriggerCrawlerRun,
@@ -31,8 +31,8 @@ import {
   countStaleRunningItems,
   describeCrawlerSnapshotQuality,
   crawlerDashboardSourcePageSize,
-  crawlerRunListFilterOptions,
-  crawlerSourceFilterOptions,
+  getCrawlerRunListFilterOptions,
+  getCrawlerSourceFilterOptions,
   crawlerSourcePageRange,
   defaultAvailabilityCrawlerRegionFilter,
   defaultCrawlerRunListFilter,
@@ -63,7 +63,15 @@ import type {
   CrawlerSourceFilter,
   CrawlerRunListFilter
 } from "@/lib/availability-crawler-progress";
-import { formatDate } from "@/lib/format";
+import { useI18n, type Language } from "@/lib/i18n";
+import type { CrawlerTranslator } from "@/lib/availability-crawler-helper-messages";
+import {
+  describeCrawlerError,
+  providerLabel,
+  sourceMatchesSearchQuery,
+  strategyLabel,
+  type CrawlerErrorOrigin,
+} from "@/lib/availability-crawler-presentation";
 import type {
   AvailabilityCrawlRun,
   AvailabilityCrawlRunItem,
@@ -91,7 +99,10 @@ type InventoryPublishResult = {
   publish_run_id?: string;
 } & Partial<AvailabilityCrawlerManualReview>;
 
+type CrawlerNotice = { key: string; params?: Record<string, string | number> };
+
 export function AvailabilityCrawlerDashboard() {
+  const { t } = useI18n();
   const [sources, setSources] = useState<AvailabilityCrawlerDashboardRow[]>([]);
   const [runs, setRuns] = useState<AvailabilityCrawlRun[]>([]);
   const [runItems, setRunItems] = useState<AvailabilityCrawlRunItem[]>([]);
@@ -108,7 +119,7 @@ export function AvailabilityCrawlerDashboard() {
   const [isPublishingInventory, setIsPublishingInventory] = useState(false);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [enqueueMessage, setEnqueueMessage] = useState<string | null>(null);
+  const [enqueueMessage, setEnqueueMessage] = useState<CrawlerNotice | null>(null);
   const [publishResult, setPublishResult] = useState<InventoryPublishResult | null>(null);
   const enqueueInFlight = useRef(false);
   const launchAbort = useRef<AbortController | null>(null);
@@ -138,7 +149,7 @@ export function AvailabilityCrawlerDashboard() {
       setError(
         sourcesResult.error?.message ??
           runsResult.error?.message ??
-          "Could not load crawler dashboard."
+          "crawler.loadFailed"
       );
       return;
     }
@@ -197,8 +208,8 @@ export function AvailabilityCrawlerDashboard() {
       activeRun,
       preview: publishReview,
       published: Boolean(publishResult && !publishResult.dry_run),
-    }),
-    [activeRun, publishResult, publishReview],
+    }, t),
+    [activeRun, publishResult, publishReview, t],
   );
 
   useEffect(() => {
@@ -215,7 +226,7 @@ export function AvailabilityCrawlerDashboard() {
 
   const regionSummaries = useMemo(() => summarizeAvailabilityCrawlerRegions(sources), [sources]);
   const selectedRegionSummary = regionSummaries[regionFilter];
-  const selectedRegionCopy = describeAvailabilityCrawlerRegionFilter(regionFilter, selectedRegionSummary);
+  const selectedRegionCopy = describeAvailabilityCrawlerRegionFilter(regionFilter, selectedRegionSummary, t);
 
   const allBuildingGroups = useMemo(() => groupAvailabilityCrawlerSourcesByBuilding(sources), [sources]);
   const runItemsBySourceId = useMemo(() => mapCrawlRunItemsBySourceId(runItems), [runItems]);
@@ -238,13 +249,13 @@ export function AvailabilityCrawlerDashboard() {
       } else {
         grouped.set(source.provider_key, {
           key: source.provider_key,
-          label: providerLabel(source.provider_label, source.provider_key),
+          label: providerLabel(source.provider_label, source.provider_key, t),
           count: 1
         });
       }
     }
     return Array.from(grouped.values()).sort((first, second) => second.count - first.count || first.label.localeCompare(second.label));
-  }, [sources]);
+  }, [sources, t]);
 
   const strategyOptions = useMemo(() => {
     const grouped = new Map<string, number>();
@@ -292,10 +303,10 @@ export function AvailabilityCrawlerDashboard() {
     [runItemsBySourceId, runStateFilter, sourceFilteredBuildingGroups]
   );
   const runListView = useMemo(
-    () => describeCrawlerRunListFilter(runStateFilter, filteredBuildingGroups.length),
-    [filteredBuildingGroups.length, runStateFilter]
+    () => describeCrawlerRunListFilter(runStateFilter, filteredBuildingGroups.length, t),
+    [filteredBuildingGroups.length, runStateFilter, t]
   );
-  const sourceFilterCopy = useMemo(() => describeCrawlerSourceFilter(activeFilter), [activeFilter]);
+  const sourceFilterCopy = useMemo(() => describeCrawlerSourceFilter(activeFilter, t), [activeFilter, t]);
   const hasTableFilters =
     activeFilter !== "all" ||
     providerFilter !== "all" ||
@@ -315,8 +326,8 @@ export function AvailabilityCrawlerDashboard() {
         regionLabel: selectedRegionCopy.label,
         runSummary: runItemSummary,
         sourceCount: totals.sources,
-      }),
-    [runItemSummary, selectedRegionCopy.label, totals.attention, totals.buildings, totals.missingURL, totals.ready, totals.sources]
+      }, t),
+    [runItemSummary, selectedRegionCopy.label, totals.attention, totals.buildings, totals.missingURL, totals.ready, totals.sources, t]
   );
   const canRestartStalledRun =
     activeRun?.status === "running" &&
@@ -334,23 +345,23 @@ export function AvailabilityCrawlerDashboard() {
     });
   const runButtonTitle =
     activeRunHasOutOfRegionSources
-      ? `Reset the current all-market run before starting a ${selectedRegionCopy.label}-only run`
+      ? t("crawler.resetOtherMarket", { scope: selectedRegionCopy.label })
       : activeRun?.status === "queued" || canRestartStalledRun
-      ? "Check existing execution and resume recoverable tasks"
+      ? t("crawler.resumeHint")
       : activeRun?.status === "running"
-        ? "Crawler worker is already running"
+        ? t("crawler.workerRunningHint")
         : undefined;
 
   const startCrawlerWorker = useCallback(async (runId: string, sourceCount?: number) => {
     const { data: sessionData } = await supabase.auth.getSession();
     const accessToken = sessionData.session?.access_token;
     if (!accessToken) {
-      throw new Error("Please sign in again before starting the crawler worker.");
+      throw new Error("crawler.signInAgain");
     }
 
     launchAbort.current = new AbortController();
     const signal = launchAbort.current.signal;
-    setEnqueueMessage("Confirming worker launch. An existing execution will be reused.");
+    setEnqueueMessage({ key: "crawler.confirmingLaunch" });
     await confirmAvailabilityCrawlerLaunch(() => fetch("/api/availability-crawler/start-worker", {
       body: JSON.stringify({ browserFallback: true, maxItems: sourceCount, runId }),
       headers: {
@@ -359,7 +370,7 @@ export function AvailabilityCrawlerDashboard() {
       },
       method: "POST",
       signal,
-    }), { signal });
+    }), { signal, t: (key) => key });
   }, []);
 
   const enqueueRun = useCallback(
@@ -381,7 +392,7 @@ export function AvailabilityCrawlerDashboard() {
         // Resuming must not enqueue another run after a concurrent reset.
         if (activeRun) {
           await startCrawlerWorker(activeRun.id);
-          setEnqueueMessage("Worker launch confirmed for the existing run.");
+          setEnqueueMessage({ key: "crawler.launchConfirmed" });
           await loadCrawlerDashboard({ quiet: true });
           return;
         }
@@ -400,31 +411,31 @@ export function AvailabilityCrawlerDashboard() {
         if (result?.run_id) {
           await startCrawlerWorker(result.run_id, result.source_count);
         } else {
-          throw new Error("The crawler run was not confirmed. Refresh before trying again.");
+          throw new Error("crawler.runNotConfirmed");
         }
         setRunStateFilter(defaultCrawlerRunListFilter);
         setEnqueueMessage(
           result?.reused
-            ? `Using the active ${result.status ?? "queued"} run with ${result.source_count ?? 0} building sources. Worker launch confirmed.`
-            : `Queued ${result?.source_count ?? 0} ${selectedRegionCopy.label} building sources. Worker launch confirmed.`
+            ? { key: "crawler.reusedRun", params: { count: result.source_count ?? 0 } }
+            : { key: "crawler.queuedRun", params: { count: result?.source_count ?? 0 } }
         );
         await loadCrawlerDashboard({ quiet: true });
       } catch (workerError) {
         await loadCrawlerDashboard({ quiet: true });
-        setError(workerError instanceof Error ? workerError.message : "Could not confirm the crawler worker.");
+        setError(workerError instanceof Error ? workerError.message : "crawler.launchFailed");
         setEnqueueMessage(null);
       } finally {
         enqueueInFlight.current = false;
         setIsEnqueueing(false);
       }
     },
-    [activeRun, loadCrawlerDashboard, selectedRegionCopy.label, startCrawlerWorker]
+    [activeRun, loadCrawlerDashboard, startCrawlerWorker]
   );
 
   const resetActiveRun = useCallback(async () => {
     if (!activeRun) return;
     const confirmed = window.confirm(
-      "Reset the current crawler run? This clears queued/running item status so you can start a fresh run. Parsed observations and history will stay."
+      t("crawler.resetConfirm")
     );
     if (!confirmed) return;
 
@@ -447,11 +458,11 @@ export function AvailabilityCrawlerDashboard() {
     const result = data as { reset?: boolean; skipped_unfinished_item_count?: number } | null;
     setEnqueueMessage(
       result?.reset
-        ? `Reset current crawler run. ${result.skipped_unfinished_item_count ?? 0} queued/running items cleared.`
-        : "No active crawler run to reset."
+        ? { key: "crawler.resetDone", params: { count: result.skipped_unfinished_item_count ?? 0 } }
+        : { key: "crawler.nothingToReset" }
     );
     await loadCrawlerDashboard({ quiet: true });
-  }, [activeRun, loadCrawlerDashboard]);
+  }, [activeRun, loadCrawlerDashboard, t]);
 
   const clearTableFilters = useCallback(() => {
     setActiveFilter("all");
@@ -467,7 +478,7 @@ export function AvailabilityCrawlerDashboard() {
 
   const previewInventoryPublish = useCallback(async () => {
     if (!latestPublishableRun) {
-      setError("Run the crawler first, then preview the latest completed run before publishing.");
+      setError("crawler.previewFirst");
       return;
     }
 
@@ -494,12 +505,12 @@ export function AvailabilityCrawlerDashboard() {
 
   const publishLatestInventory = useCallback(async () => {
     if (!latestPublishableRun || !canPublishAvailabilityCrawlerReview(publishReview, latestPublishableRun.id, regionFilter)) {
-      setError("Run the crawler first, then preview the latest completed run before publishing.");
+      setError("crawler.reviewAgain");
       return;
     }
 
     const confirmed = window.confirm(
-      `Publish the reviewed ${selectedRegionCopy.label} changes from run ${shortRunId(latestPublishableRun.id)}? ${publishResult?.marked_unavailable_count ?? 0} listings will be marked unavailable.`
+      t("crawler.publishConfirm", { scope: selectedRegionCopy.label, id: shortRunId(latestPublishableRun.id, t), count: publishResult?.marked_unavailable_count ?? 0 })
     );
     if (!confirmed) return;
 
@@ -524,29 +535,25 @@ export function AvailabilityCrawlerDashboard() {
 
     const result = data as InventoryPublishResult;
     setPublishResult(result);
-    setEnqueueMessage(formatInventoryPublishMessage(result, selectedRegionCopy.label));
+    setEnqueueMessage(inventoryPublishNotice(result));
     await loadCrawlerDashboard({ quiet: true });
-  }, [latestPublishableRun, loadCrawlerDashboard, publishResult, publishReview, regionFilter, selectedRegionCopy.label]);
+  }, [latestPublishableRun, loadCrawlerDashboard, publishResult, publishReview, regionFilter, selectedRegionCopy.label, t]);
 
   return (
     <div className="crawler-page">
       <div className="page-hero crawler-hero">
         <div>
-          <div className="eyebrow">Availability crawler</div>
-          <h1>Availability crawler queue</h1>
-          <p>
-            Track each building like a download task: what is crawling now, what finished, what failed, and what
-            has not started yet.
-          </p>
+          <div className="eyebrow">{t("crawler.eyebrow")}</div>
+          <h1>{t("crawler.title")}</h1>
         </div>
         <div className="page-actions crawler-actions">
           <label className="crawler-region-picker">
-            <span>Area</span>
+            <span>{t("crawler.area")}</span>
             <select
               value={regionFilter}
               onChange={(event) => setRegionFilter(event.target.value as AvailabilityCrawlerRegionFilter)}
             >
-              {availabilityCrawlerRegionOptions.map((option) => (
+              {getAvailabilityCrawlerRegionOptions(t).map((option) => (
                 <option key={option.filter} value={option.filter}>
                   {option.label}
                 </option>
@@ -562,7 +569,7 @@ export function AvailabilityCrawlerDashboard() {
             type="button"
           >
             <Bot size={16} />
-            {isEnqueueing ? "Starting" : `Run ${regionFilter === "all" ? "crawler" : regionFilter}`}
+            {isEnqueueing ? t("crawler.starting") : regionFilter === "all" ? t("crawler.runAll") : t("crawler.runScope", { scope: selectedRegionCopy.label })}
           </button>
           <button
             className="ghost-button crawler-refresh-action"
@@ -571,12 +578,12 @@ export function AvailabilityCrawlerDashboard() {
             type="button"
           >
             <RefreshCcw size={15} />
-            {isLoading ? "Refreshing" : "Refresh"}
+            {isLoading ? t("crawler.refreshing") : t("crawler.refresh")}
           </button>
           <div className="crawler-action-menu">
             <button
               aria-expanded={isActionMenuOpen}
-              aria-label="More crawler actions"
+              aria-label={t("crawler.moreActions")}
               className="ghost-button crawler-menu-trigger"
               onClick={() => setIsActionMenuOpen((isOpen) => !isOpen)}
               type="button"
@@ -606,8 +613,8 @@ export function AvailabilityCrawlerDashboard() {
                 >
                   <SearchCode size={15} />
                   <span>
-                    <strong>Run filtered</strong>
-                    <small>{filteredRunnableSources.length.toLocaleString("en-US")} ready sources in current filters</small>
+                    <strong>{t("crawler.runFiltered")}</strong>
+                    <small>{t("crawler.readySources", { count: filteredRunnableSources.length })}</small>
                   </span>
                 </button>
                 <button
@@ -620,8 +627,8 @@ export function AvailabilityCrawlerDashboard() {
                 >
                   <XCircle size={15} />
                   <span>
-                    <strong>{isResetting ? "Resetting" : "Reset run"}</strong>
-                    <small>Cancel queued/running items and start fresh</small>
+                    <strong>{isResetting ? t("crawler.resetting") : t("crawler.reset")}</strong>
+                    <small>{t("crawler.resetHint")}</small>
                   </span>
                 </button>
               </div>
@@ -630,8 +637,8 @@ export function AvailabilityCrawlerDashboard() {
         </div>
       </div>
 
-      {error ? <div className="message error">{error}</div> : null}
-      {enqueueMessage ? <div className="message">{enqueueMessage}</div> : null}
+      {error ? <CrawlerError error={error} /> : null}
+      {enqueueMessage ? <div className="message">{t(enqueueMessage.key, enqueueMessage.params)}</div> : null}
 
       <CrawlerManualWorkflow steps={workflowSteps} />
 
@@ -645,7 +652,7 @@ export function AvailabilityCrawlerDashboard() {
           scopeLabel={selectedRegionCopy.label}
           scopeNotice={
             activeRunHasOutOfRegionSources
-              ? `The active run still contains sources outside ${selectedRegionCopy.label}. Reset it before starting a clean ${selectedRegionCopy.label}-only crawl.`
+              ? t("crawler.scopeNotice", { scope: selectedRegionCopy.label })
               : null
           }
           summary={runItemSummary}
@@ -669,8 +676,8 @@ export function AvailabilityCrawlerDashboard() {
         {overviewCards.map((card) => (
           <CrawlerMetric
             helper={card.helper}
-            icon={overviewCardIcon(card.label)}
-            key={card.label}
+            icon={overviewCardIcon(card.id)}
+            key={card.id}
             label={card.label}
             tone={card.tone}
             value={card.value}
@@ -681,12 +688,8 @@ export function AvailabilityCrawlerDashboard() {
       <section className="analytics-card crawler-table-card">
         <div className="crawler-table-header">
           <div>
-            <div className="eyebrow">Crawler queue</div>
-            <h3>{selectedRegionCopy.label} crawler list</h3>
-            <p>
-              One row per building. Building names open the verified availability page when we have one; source rows stay
-              folded into each building task.
-            </p>
+            <div className="eyebrow">{t("crawler.queueEyebrow")}</div>
+            <h3>{t("crawler.listTitle", { scope: selectedRegionCopy.label })}</h3>
           </div>
           <div className="crawler-quick-stats">
             <span>{selectedRegionCopy.buildingLabel}</span>
@@ -695,9 +698,9 @@ export function AvailabilityCrawlerDashboard() {
           </div>
         </div>
 
-        <div className="crawler-run-switcher" aria-label="Crawler run status overview">
-          <span className="crawler-filter-section-label">Task status</span>
-          {crawlerRunListFilterOptions.map((option) => (
+        <div className="crawler-run-switcher" aria-label={t("crawler.statusOverview")}>
+          <span className="crawler-filter-section-label">{t("crawler.taskStatus")}</span>
+          {getCrawlerRunListFilterOptions(t).map((option) => (
             <CrawlerRunStateButton
               key={option.filter}
               active={runStateFilter === option.filter}
@@ -714,7 +717,7 @@ export function AvailabilityCrawlerDashboard() {
             <h4>{runListView.title}</h4>
             <p>
               {runListView.helper}
-              {activeFilter !== "all" ? ` Source type: ${sourceFilterCopy.label}.` : ""}
+              {activeFilter !== "all" ? t("crawler.sourceTypeSuffix", { type: sourceFilterCopy.label }) : ""}
             </p>
           </div>
           <strong>{runListView.countLabel}</strong>
@@ -724,19 +727,19 @@ export function AvailabilityCrawlerDashboard() {
           <label className="crawler-search-field">
             <Search size={16} />
             <input
-              placeholder="Search building, provider, city, strategy..."
+              placeholder={t("crawler.searchPlaceholder")}
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
             />
           </label>
           <label className="crawler-select-field">
-            <span>Source type</span>
+            <span>{t("crawler.sourceType")}</span>
             <select
               value={activeFilter}
               onChange={(event) => changeSourceFilter(event.target.value as CrawlerSourceFilter)}
               title={sourceFilterCopy.helper}
             >
-              {crawlerSourceFilterOptions.map((option) => (
+              {getCrawlerSourceFilterOptions(t).map((option) => (
                 <option key={option.filter} value={option.filter}>
                   {option.label}
                 </option>
@@ -744,9 +747,9 @@ export function AvailabilityCrawlerDashboard() {
             </select>
           </label>
           <label className="crawler-select-field">
-            <span>Provider</span>
+            <span>{t("crawler.provider")}</span>
             <select value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)}>
-              <option value="all">All providers</option>
+              <option value="all">{t("crawler.allProviders")}</option>
               {providerOptions.map((provider) => (
                 <option key={provider.key} value={provider.key}>
                   {provider.label} ({provider.count})
@@ -755,12 +758,12 @@ export function AvailabilityCrawlerDashboard() {
             </select>
           </label>
           <label className="crawler-select-field">
-            <span>Strategy</span>
+            <span>{t("crawler.strategy")}</span>
             <select value={strategyFilter} onChange={(event) => setStrategyFilter(event.target.value)}>
-              <option value="all">All strategies</option>
+              <option value="all">{t("crawler.allStrategies")}</option>
               {strategyOptions.map((option) => (
                 <option key={option.strategy} value={option.strategy}>
-                  {option.strategy.replaceAll("_", " ")} ({option.count})
+                  {strategyLabel(option.strategy, t)} ({option.count})
                 </option>
               ))}
             </select>
@@ -771,7 +774,7 @@ export function AvailabilityCrawlerDashboard() {
             onClick={clearTableFilters}
             type="button"
           >
-            Clear
+            {t("crawler.clear")}
           </button>
         </div>
 
@@ -793,14 +796,15 @@ function CrawlerManualWorkflow({
 }: {
   steps: ReturnType<typeof availabilityCrawlerManualSteps>;
 }) {
+  const { t } = useI18n();
   return (
     <section className="analytics-card crawler-manual-workflow">
       <div className="crawler-manual-workflow-heading">
         <div>
-          <div className="eyebrow">Manual control</div>
-          <h3>Crawl, review, then publish</h3>
+          <div className="eyebrow">{t("crawler.manualControl")}</div>
+          <h3>{t("crawler.workflowTitle")}</h3>
         </div>
-        <span className="crawler-manual-mode">Automatic runs off</span>
+        <span className="crawler-manual-mode">{t("crawler.automaticOff")}</span>
       </div>
       <div className="crawler-manual-steps">
         {steps.map((step) => (
@@ -871,29 +875,30 @@ function CrawlerRunProgressCard({
   snapshotSummary: ReturnType<typeof summarizeCrawlerSnapshotQuality>;
   summary: ReturnType<typeof summarizeCrawlRunItems>;
 }) {
+  const { t } = useI18n();
   const waitingForWorker = active && run.status === "queued" && summary.running === 0 && summary.processed === 0;
 
   return (
     <section className="analytics-card crawler-progress-card">
       <div className="crawler-progress-header">
         <div>
-          <div className="eyebrow">{active ? "Current run" : "Latest run"}</div>
-          <h3>{active ? `${scopeLabel} progress` : `Last ${scopeLabel} run`}</h3>
+          <div className="eyebrow">{active ? t("crawler.currentRun") : t("crawler.latestRun")}</div>
+          <h3>{t(active ? "crawler.scopeProgress" : "crawler.lastScopeRun", { scope: scopeLabel })}</h3>
           <div className="crawler-progress-message-row">
             <p>
               {scopeNotice ??
                 (active
                 ? waitingForWorker
-                  ? "Queued and waiting for the background worker to claim items."
-                  : "Refreshing every few seconds while the worker processes sources."
+                  ? t("crawler.waitingWorker")
+                  : t("crawler.workerProcessing")
                 : snapshotSummary.partial + snapshotSummary.unverified > 0
-                  ? "Run ended. Partial or unverified snapshots need review."
-                  : `Run ended. ${summary.processed} sources processed.`)}
+                  ? t("crawler.endedReview")
+                  : t("crawler.endedSources", { count: summary.processed }))}
             </p>
             {canReset ? (
               <button className="ghost-button compact-button crawler-inline-reset" disabled={isResetting} onClick={onReset} type="button">
                 <XCircle size={14} />
-                {isResetting ? "Resetting" : "Reset run"}
+                {isResetting ? t("crawler.resetting") : t("crawler.reset")}
               </button>
             ) : null}
           </div>
@@ -901,25 +906,25 @@ function CrawlerRunProgressCard({
         <div className="crawler-progress-main-stat">
           <strong>{summary.progressPercentage}%</strong>
           <span>
-            {summary.processed}/{summary.total || run.source_count} processed
+            {t("crawler.processed", { processed: summary.processed, total: summary.total || run.source_count })}
           </span>
         </div>
       </div>
 
-      <div className="crawler-progress-track" aria-label="Crawler run progress">
+      <div className="crawler-progress-track" aria-label={t("crawler.progress")}>
         <span style={{ width: `${summary.progressPercentage}%` }} />
       </div>
 
       <div className="crawler-run-status-grid">
-        <CrawlerRunStatusMetric label="Queued" value={summary.queued} />
-        <CrawlerRunStatusMetric label="Running" value={summary.running} tone="brand" />
-        <CrawlerRunStatusMetric label="Parsed units" value={summary.succeeded} />
-        <CrawlerRunStatusMetric label="No units parsed" value={summary.noUnits} />
-        <CrawlerRunStatusMetric label="Adapter needed" value={summary.unsupported} />
-        <CrawlerRunStatusMetric label="Failed" value={summary.failed} tone="danger" />
+        <CrawlerRunStatusMetric label={t("crawler.queued")} value={summary.queued} />
+        <CrawlerRunStatusMetric label={t("crawler.running")} value={summary.running} tone="brand" />
+        <CrawlerRunStatusMetric label={t("crawler.parsedSources")} value={summary.succeeded} />
+        <CrawlerRunStatusMetric label={t("crawler.noUnits")} value={summary.noUnits} />
+        <CrawlerRunStatusMetric label={t("crawler.adapterNeeded")} value={summary.unsupported} />
+        <CrawlerRunStatusMetric label={t("crawler.failed")} value={summary.failed} tone="danger" />
       </div>
-      <p className="table-subtext crawler-snapshot-summary" aria-label="Snapshot quality">
-        Snapshot quality: {snapshotSummary.complete} complete · {snapshotSummary.confirmedEmpty} confirmed empty · {snapshotSummary.partial} partial · {snapshotSummary.unverified} unverified. Task completion is not inventory accuracy.
+      <p className="table-subtext crawler-snapshot-summary" aria-label={t("crawler.snapshotQuality")}>
+        {t("crawler.snapshotSummary", { complete: snapshotSummary.complete, empty: snapshotSummary.confirmedEmpty, partial: snapshotSummary.partial, unverified: snapshotSummary.unverified })}
       </p>
     </section>
   );
@@ -946,30 +951,26 @@ function InventoryPublishCard({
   targetRun: AvailabilityCrawlRun | null;
   scopeLabel: string;
 }) {
+  const { t, language } = useI18n();
   const review = result?.dry_run ? result as AvailabilityCrawlerManualReview : null;
   const canPublish = canPublishAvailabilityCrawlerReview(review, targetRun?.id ?? null, market);
-  const reviewCopy = review ? describeAvailabilityCrawlerReview(review) : null;
+  const reviewCopy = review ? describeAvailabilityCrawlerReview(review, t) : null;
 
   return (
     <section className="analytics-card crawler-publish-card">
       <div>
-        <div className="eyebrow">Inventory publish</div>
-        <h3>Publish latest crawler data</h3>
-        <p>
-          Preview first, then publish validated observations into app listings. Publishing can add new units, update prices,
-          and mark crawler-linked units unavailable when they disappear from a reliable latest crawl.
-        </p>
+        <div className="eyebrow">{t("crawler.inventoryPublish")}</div>
+        <h3>{t("crawler.publishTitle")}</h3>
         <div className="crawler-publish-run">
           {targetRun ? (
             <>
-              <strong>Target run {shortRunId(targetRun.id)}</strong>
+              <strong>{t("crawler.targetRun", { id: shortRunId(targetRun.id, t) })}</strong>
               <span>
-                {targetRun.status} · {targetRun.observation_count.toLocaleString("en-US")} observations · finished{" "}
-                {formatNullableDate(targetRun.finished_at)}
+                {t("crawler.targetRunSummary", { status: runStatusLabel(targetRun.status, t), count: targetRun.observation_count, date: formatNullableDate(targetRun.finished_at, language, t) })}
               </span>
             </>
           ) : (
-            <span>Run the crawler and wait for a completed or partial run before publishing.</span>
+            <span>{t("crawler.noPublishRun")}</span>
           )}
         </div>
         {reviewCopy ? (
@@ -985,26 +986,26 @@ function InventoryPublishCard({
       <div className="crawler-publish-actions">
         <button className="ghost-button" disabled={disabled || !targetRun} onClick={onPreview} type="button">
           <DatabaseZap size={15} />
-          {isPreviewing ? "Previewing" : "Preview"}
+          {isPreviewing ? t("crawler.previewing") : t("crawler.preview")}
         </button>
         <button className="button crawler-primary-action" disabled={disabled || !canPublish} onClick={onPublish} type="button">
           <CheckCircle2 size={15} />
-          {isPublishing ? "Publishing" : `Publish ${scopeLabel}`}
+          {isPublishing ? t("crawler.publishing") : t("crawler.publishScope", { scope: scopeLabel })}
         </button>
       </div>
       <div className="crawler-publish-preview">
         {result ? (
           <>
-            <CrawlerPublishMetric label="Sources checked" value={result.checked_source_count ?? result.source_count} />
-            <CrawlerPublishMetric label="Publishable units" value={result.candidate_observation_count} tone="brand" />
-            <CrawlerPublishMetric label="New listings" value={result.created_listing_count} tone="success" />
-            <CrawlerPublishMetric label="Updated listings" value={result.updated_listing_count} />
-            <CrawlerPublishMetric label="Marked unavailable" value={result.marked_unavailable_count} tone="danger" />
-            <CrawlerPublishMetric label="Skipped rows" value={result.skipped_observation_count} />
+            <CrawlerPublishMetric label={t("crawler.sourcesChecked")} value={result.checked_source_count ?? result.source_count} />
+            <CrawlerPublishMetric label={t("crawler.publishableUnits")} value={result.candidate_observation_count} tone="brand" />
+            <CrawlerPublishMetric label={t("crawler.newListings")} value={result.created_listing_count} tone="success" />
+            <CrawlerPublishMetric label={t("crawler.updatedListings")} value={result.updated_listing_count} />
+            <CrawlerPublishMetric label={t("crawler.unavailableListings")} value={result.marked_unavailable_count} tone="danger" />
+            <CrawlerPublishMetric label={t("crawler.skippedRows")} value={result.skipped_observation_count} />
           </>
         ) : (
           <div className="crawler-publish-empty">
-            Preview the target run to see exactly what will be merged before touching app inventory.
+            {t("crawler.noPreview")}
           </div>
         )}
       </div>
@@ -1059,24 +1060,24 @@ function CrawlerRunStatusMetric({
 }
 
 function RunItemStatusPill({ status }: { status: string }) {
-  if (status === "running") return <span className="status-pill pending">Running</span>;
-  if (status === "succeeded") return <span className="status-pill active">Parsed</span>;
-  if (status === "no_units_found") return <span className="status-pill pending">No units parsed</span>;
-  if (status === "failed") return <span className="status-pill suspended">Failed</span>;
-  if (status === "unsupported") return <span className="status-pill pending">Adapter needed</span>;
-  if (status === "unavailable") return <span className="status-pill pending">Empty result</span>;
-  if (status === "skipped") return <span className="status-pill pending">Skipped</span>;
-  return <span className="status-pill pending">Queued</span>;
+  const { t } = useI18n();
+  if (status === "running") return <span className="status-pill pending">{t("crawler.running")}</span>;
+  if (status === "succeeded") return <span className="status-pill active">{t("crawler.parsed")}</span>;
+  if (status === "no_units_found") return <span className="status-pill pending">{t("crawler.noUnits")}</span>;
+  if (status === "failed") return <span className="status-pill suspended">{t("crawler.failed")}</span>;
+  if (status === "unsupported") return <span className="status-pill pending">{t("crawler.adapterNeeded")}</span>;
+  if (status === "unavailable") return <span className="status-pill pending">{t("crawler.empty")}</span>;
+  if (status === "skipped") return <span className="status-pill pending">{t("crawler.skipped")}</span>;
+  return <span className="status-pill pending">{t("crawler.queued")}</span>;
 }
 
-function runItemNote(status: string) {
-  if (status === "queued") return "Waiting for worker.";
-  if (status === "running") return "Crawler is processing this source.";
-  if (status === "succeeded") return "Available units parsed.";
-  if (status === "no_units_found") return "Page loaded but no available units were found.";
-  if (status === "unavailable") return "No units reported. Check snapshot quality before publishing.";
-  if (status === "failed") return "Crawler failed on this source.";
-  return status.replaceAll("_", " ");
+function runItemNote(status: string, t: CrawlerTranslator) {
+  const keys: Record<string, string> = {
+    queued: "waitingNote", running: "runningNote", succeeded: "parsedNote",
+    no_units_found: "noUnitsNote", unavailable: "emptyNote", failed: "failedNote",
+    unsupported: "parserRequired", skipped: "skippedNote",
+  };
+  return keys[status] ? t(`crawler.${keys[status]}`) : runStatusLabel(status, t);
 }
 
 function CrawlerMetric({
@@ -1104,10 +1105,10 @@ function CrawlerMetric({
   );
 }
 
-function overviewCardIcon(label: string) {
-  if (label === "Current queue") return <SearchCode size={17} />;
-  if (label === "Crawling now") return <Bot size={17} />;
-  if (label === "Needs review") return <AlertTriangle size={17} />;
+function overviewCardIcon(id: string) {
+  if (id === "queue") return <SearchCode size={17} />;
+  if (id === "running") return <Bot size={17} />;
+  if (id === "review") return <AlertTriangle size={17} />;
   return <DatabaseZap size={17} />;
 }
 
@@ -1178,10 +1179,12 @@ function CrawlerSourceTable({
   runItemsBySourceId: Map<string, AvailabilityCrawlRunItem>;
   showEmptySections: boolean;
 }) {
+  const { t } = useI18n();
   const sections = groupCrawlerRunListSections(
     groups,
     (group) => crawlerRunStateForGroup(group, runItemsBySourceId),
-    { includeEmpty: showEmptySections }
+    { includeEmpty: showEmptySections },
+    t,
   );
 
   return (
@@ -1189,20 +1192,20 @@ function CrawlerSourceTable({
       <table className="admin-table crawler-source-table">
         <thead>
           <tr>
-            <th>Building</th>
-            <th>Provider & strategy</th>
-            <th>Crawl status</th>
-            <th>Latest crawl</th>
-            <th>Units / changes</th>
-            <th>Notes</th>
-            <th>Action</th>
+            <th>{t("crawler.building")}</th>
+            <th>{t("crawler.providerStrategy")}</th>
+            <th>{t("crawler.crawlStatus")}</th>
+            <th>{t("crawler.latestCrawl")}</th>
+            <th>{t("crawler.unitsChanges")}</th>
+            <th>{t("crawler.notes")}</th>
+            <th>{t("crawler.action")}</th>
           </tr>
         </thead>
         <tbody>
           {groups.length === 0 ? (
             <tr>
               <td colSpan={7}>
-                <EmptyCrawlerState title="No buildings match these filters" body="Try a different provider, strategy, or status filter." />
+                <EmptyCrawlerState title={t("crawler.noBuildings")} body={t("crawler.noBuildingsHint")} />
               </td>
             </tr>
           ) : null}
@@ -1240,14 +1243,15 @@ function CrawlerSourceTable({
 }
 
 function CrawlerSourceEmptySectionRow({ state }: { state: string }) {
+  const { t } = useI18n();
   const copy =
     state === "active"
-      ? "No buildings are actively crawling right now."
+      ? t("crawler.emptyActive")
       : state === "done"
-        ? "No buildings have completed in this view yet."
+        ? t("crawler.emptyDone")
         : state === "failed"
-          ? "No failures in this view."
-          : "No not-started buildings in this view.";
+          ? t("crawler.emptyFailed")
+          : t("crawler.emptyNotStarted");
 
   return (
     <tr className={`crawler-source-empty-section section-${state}`}>
@@ -1267,6 +1271,7 @@ function CrawlerSourceSectionHeader({
   label: string;
   state: string;
 }) {
+  const { t } = useI18n();
   return (
     <tr className={`crawler-source-section-row section-${state}`}>
       <td colSpan={7}>
@@ -1275,7 +1280,7 @@ function CrawlerSourceSectionHeader({
             <span>{label}</span>
             <small>{helper}</small>
           </div>
-          <strong>{count.toLocaleString("en-US")} {count === 1 ? "building" : "buildings"}</strong>
+          <strong>{t("crawler.buildingCount", { count })}</strong>
         </div>
       </td>
     </tr>
@@ -1295,12 +1300,14 @@ function CrawlerSourceTableRow({
   onRunSource: (source: AvailabilityCrawlerDashboardRow) => void;
   runItem: AvailabilityCrawlRunItem | null;
 }) {
+  const { t, language } = useI18n();
   const row = group.primarySource;
   const currentUnits = runItem ? runItem.units_found : row.latest_units_found ?? 0;
   const currentChanges = runItem ? runItem.changes_detected : row.change_count_7d;
   const statusTime = runItem ? runItem.finished_at ?? runItem.started_at : row.last_crawled_at;
-  const statusNote = runItem ? runItem.error || runItemNote(runItem.status) : noteForSource(row);
-  const quality = describeCrawlerSnapshotQuality(runItem);
+  const diagnostic = runItem ? runItem.error : row.latest_error;
+  const statusNote = runItem ? runItemNote(runItem.status, t) : noteForSource(row, t);
+  const quality = describeCrawlerSnapshotQuality(runItem, t);
 
   return (
     <tr>
@@ -1314,18 +1321,17 @@ function CrawlerSourceTableRow({
           <strong>{row.building_name}</strong>
         )}
         <p className="table-subtext">
-          {[row.area, row.city, row.state].filter(Boolean).join(" · ") || "No area"}
+          {[row.area, row.city, row.state].filter(Boolean).join(" · ") || t("crawler.noArea")}
           {row.year_built ? ` · ${row.year_built}` : ""}
-          {row.total_units ? ` · ${row.total_units} units` : ""}
-          {group.sourceCount > 1 ? ` · ${group.sourceCount} sources` : ""}
+          {row.total_units ? ` · ${t("crawler.unitCount", { count: row.total_units })}` : ""}
+          {group.sourceCount > 1 ? ` · ${t("crawler.sourceCount", { count: group.sourceCount })}` : ""}
         </p>
       </td>
       <td>
-        <strong>{providerLabel(row.provider_label, row.provider_key)}</strong>
-        <p className="table-subtext">{row.provider_key}</p>
+        <strong>{providerLabel(row.provider_label, row.provider_key, t)}</strong>
         <p className="table-subtext">
-          <code>{row.parser_strategy.replaceAll("_", " ")}</code>
-          {row.requires_browser ? <span className="crawler-mini-pill">browser</span> : null}
+          <span title={row.parser_strategy}>{strategyLabel(row.parser_strategy, t)}</span>
+          {row.requires_browser ? <span className="crawler-mini-pill">{t("crawler.browser")}</span> : null}
         </p>
       </td>
       <td>
@@ -1333,21 +1339,21 @@ function CrawlerSourceTableRow({
         {runItem?.status !== "running" && runItem?.status !== "queued" ? (
           <p className="table-subtext"><span className={`status-pill ${quality.tone}`} title={quality.note}>{quality.label}</span></p>
         ) : null}
-        <p className="table-subtext">{runItem ? "current run" : row.provider_status.replaceAll("_", " ")}</p>
+        <p className="table-subtext">{runItem ? t("crawler.currentRunNote") : providerStatusLabel(row.provider_status, t)}</p>
       </td>
       <td>
-        <strong className="crawler-date-text">{formatNullableDate(statusTime)}</strong>
-        {row.last_success_at && !runItem ? <p className="table-subtext">success {formatNullableDate(row.last_success_at)}</p> : null}
+        <strong className="crawler-date-text">{formatNullableDate(statusTime, language, t)}</strong>
+        {row.last_success_at && !runItem ? <p className="table-subtext">{t("crawler.lastSuccess", { date: formatNullableDate(row.last_success_at, language, t) })}</p> : null}
       </td>
       <td>
-        <strong>{currentUnits} units</strong>
+        <strong>{t("crawler.unitCount", { count: currentUnits })}</strong>
         <p className="table-subtext">
-          {currentChanges} changes
-          {runItem ? "" : ` · ${row.price_change_count_7d} price · ${row.went_unavailable_count_7d} leased`}
+          {t("crawler.changeCount", { count: currentChanges })}
+          {runItem ? "" : t("crawler.changeBreakdown", { price: row.price_change_count_7d, unavailable: row.went_unavailable_count_7d })}
         </p>
       </td>
       <td>
-        <span className="crawler-note-text">{statusNote}</span>
+        <div className="crawler-note-text">{diagnostic ? <CrawlerError error={diagnostic} origin="source" compact /> : statusNote}</div>
       </td>
       <td>
         <button
@@ -1362,15 +1368,15 @@ function CrawlerSourceTableRow({
           onClick={() => onRunSource(row)}
           title={
             activeRun
-              ? "A crawler run is already queued or running"
+              ? t("crawler.runAlreadyActive")
               : isRunnableSource(row)
-                ? "Queue this building for crawl"
-                : "This source needs a supported availability parser first"
+                ? t("crawler.queueBuilding")
+                : t("crawler.parserRequired")
           }
           type="button"
         >
           <SearchCode size={13} />
-          Run
+          {t("crawler.run")}
         </button>
       </td>
     </tr>
@@ -1378,11 +1384,12 @@ function CrawlerSourceTableRow({
 }
 
 function StatusPill({ row }: { row: AvailabilityCrawlerDashboardRow }) {
+  const { t } = useI18n();
   if (row.provider_status === "validated_units_found" && isRunnableSource(row)) {
     return (
       <span className="status-pill active">
         <CheckCircle2 size={12} />
-        Validated
+        {t("crawler.validated")}
       </span>
     );
   }
@@ -1391,20 +1398,20 @@ function StatusPill({ row }: { row: AvailabilityCrawlerDashboardRow }) {
     return (
       <span className="status-pill pending">
         <CheckCircle2 size={12} />
-        No units now
+        {t("crawler.noUnitsNow")}
       </span>
     );
   }
 
   if (isReferenceOnlySource(row)) {
-    return <span className="status-pill pending">Reference</span>;
+    return <span className="status-pill pending">{t("crawler.reference")}</span>;
   }
 
   if (!row.crawl_enabled) {
     return (
       <span className="status-pill suspended">
         <XCircle size={12} />
-        Disabled
+        {t("crawler.disabled")}
       </span>
     );
   }
@@ -1413,7 +1420,7 @@ function StatusPill({ row }: { row: AvailabilityCrawlerDashboardRow }) {
     return (
       <span className="status-pill active">
         <CheckCircle2 size={12} />
-        Parsed
+        {t("crawler.parsed")}
       </span>
     );
   }
@@ -1422,7 +1429,7 @@ function StatusPill({ row }: { row: AvailabilityCrawlerDashboardRow }) {
     return (
       <span className="status-pill pending">
         <Bot size={12} />
-        Browser
+        {t("crawler.browser")}
       </span>
     );
   }
@@ -1431,7 +1438,7 @@ function StatusPill({ row }: { row: AvailabilityCrawlerDashboardRow }) {
     return (
       <span className="status-pill pending">
         <AlertTriangle size={12} />
-        Review
+        {t("crawler.review")}
       </span>
     );
   }
@@ -1440,12 +1447,12 @@ function StatusPill({ row }: { row: AvailabilityCrawlerDashboardRow }) {
     return (
       <span className="status-pill active">
         <CheckCircle2 size={12} />
-        Ready
+        {t("crawler.ready")}
       </span>
     );
   }
 
-  return <span className="status-pill pending">Pending</span>;
+  return <span className="status-pill pending">{t("crawler.pending")}</span>;
 }
 
 function EmptyCrawlerState({ body, title }: { body: string; title: string }) {
@@ -1479,26 +1486,6 @@ function matchesBuildingGroupFilter(
   }
 }
 
-function sourceMatchesSearchQuery(source: AvailabilityCrawlerDashboardRow, normalizedQuery: string) {
-  const haystack = [
-    source.building_name,
-    source.area,
-    source.city,
-    source.state,
-    source.provider_key,
-    source.provider_label,
-    source.parser_strategy,
-    source.provider_status,
-    source.availability_url,
-    source.website
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return haystack.includes(normalizedQuery);
-}
-
 function isConcreteSource(source: AvailabilityCrawlerDashboardRow) {
   return isConcreteAvailabilityCrawlerSource(source);
 }
@@ -1521,40 +1508,85 @@ function needsAttention(source: AvailabilityCrawlerDashboardRow) {
   );
 }
 
-function noteForSource(source: AvailabilityCrawlerDashboardRow) {
-  if (source.latest_error) return source.latest_error;
-  if (!source.availability_url) return "No concrete availability URL yet.";
-  if (isReferenceOnlySource(source)) return "Reference link only; not an available-unit parser source.";
-  if (source.provider_status === "validated_units_found") return "Validated unit rows; ready for scheduled monitoring.";
-  if (source.provider_status === "confirmed_no_current_units") return "Availability page confirmed, currently no units.";
-  if (source.provider_status === "needs_floorplan_drilldown") return "Floor plan counts found; needs a unit-level parser before crawling.";
-  if (source.provider_status === "surface_found_needs_parser") return "Availability surface found; parser still needs validation.";
-  if (source.provider_status === "count_mismatch_needs_parser_review") return "Parsed unit count did not match the page count; keep disabled.";
-  if (!source.crawl_enabled) return "Crawler disabled until source is confirmed.";
-  if (source.requires_browser) return "Ready for browser-rendered crawl.";
-  if (source.latest_status === "no_units_found") return "Page loaded but no available units parsed.";
-  if (source.latest_status === "skipped" && isRunnableSource(source)) return "Ready for next crawl.";
-  if (source.latest_status) return source.latest_status.replaceAll("_", " ");
-  return "Ready for first crawl.";
+function noteForSource(source: AvailabilityCrawlerDashboardRow, t: CrawlerTranslator) {
+  if (!source.availability_url) return t("crawler.missingURLNote");
+  if (isReferenceOnlySource(source)) return t("crawler.referenceNote");
+  if (source.provider_status === "validated_units_found") return t("crawler.validatedNote");
+  if (source.provider_status === "confirmed_no_current_units") return t("crawler.confirmedEmptyNote");
+  if (source.provider_status === "needs_floorplan_drilldown") return t("crawler.drilldownNote");
+  if (source.provider_status === "surface_found_needs_parser") return t("crawler.surfaceNote");
+  if (source.provider_status === "count_mismatch_needs_parser_review") return t("crawler.mismatchNote");
+  if (!source.crawl_enabled) return t("crawler.disabledNote");
+  if (source.requires_browser) return t("crawler.browserNote");
+  if (source.latest_status === "no_units_found") return t("crawler.noUnitsNote");
+  if (source.latest_status === "skipped" && isRunnableSource(source)) return t("crawler.nextCrawlNote");
+  if (source.latest_status) return runItemNote(source.latest_status, t);
+  return t("crawler.firstCrawlNote");
 }
 
-function providerLabel(label: string | null, key: string) {
-  return label || key.replaceAll("_", " ");
+function runStatusLabel(status: string, t: CrawlerTranslator) {
+  const keys: Record<string, string> = {
+    queued: "queued", running: "running", succeeded: "completed", partial: "partialRun",
+    failed: "failed", cancelled: "cancelled", skipped: "skipped", unsupported: "adapterNeeded",
+    unavailable: "empty", no_units_found: "noUnits",
+  };
+  return t(`crawler.${keys[status] ?? "unknownStatus"}`);
 }
 
-function formatInventoryPublishMessage(result: InventoryPublishResult, scopeLabel: string) {
-  return [
-    `Published ${result.candidate_observation_count.toLocaleString("en-US")} ${scopeLabel} observations from run ${shortRunId(result.run_id)} to app inventory.`,
-    `${result.created_listing_count.toLocaleString("en-US")} new listings`,
-    `${result.updated_listing_count.toLocaleString("en-US")} updated`,
-    `${result.marked_unavailable_count.toLocaleString("en-US")} marked unavailable`,
-  ].join(" ");
+function providerStatusLabel(status: string, t: CrawlerTranslator) {
+  const keys: Record<string, string> = {
+    validated_units_found: "validated", confirmed_no_current_units: "noUnitsNow",
+    needs_floorplan_drilldown: "drilldownNote", surface_found_needs_parser: "surfaceNote",
+    count_mismatch_needs_parser_review: "mismatchNote", provider_link_found: "statusProviderLink",
+    official_availability_page_found: "statusOfficialPage", missing_website: "statusMissingWebsite",
+    website_unavailable: "statusWebsiteUnavailable", fetch_failed: "statusFetchFailed",
+    browser_fetch_failed: "statusBrowserFailed", contact_or_tour_only: "statusContactOnly",
+    no_availability_signal: "statusNoSignal", provider_signal_without_link: "statusSignalOnly",
+  };
+  return t(`crawler.${keys[status] ?? "pending"}`);
 }
 
-function shortRunId(runId: string | null | undefined) {
-  return runId ? runId.slice(0, 8) : "unknown";
+function inventoryPublishNotice(result: InventoryPublishResult): CrawlerNotice {
+  return {
+    key: "crawler.publishedMessage",
+    params: {
+      count: result.candidate_observation_count,
+      id: result.run_id?.slice(0, 8) ?? "-",
+      created: result.created_listing_count,
+      updated: result.updated_listing_count,
+      unavailable: result.marked_unavailable_count,
+    },
+  };
 }
 
-function formatNullableDate(value: string | null) {
-  return value ? formatDate(value) : "N/A";
+function shortRunId(runId: string | null | undefined, t: CrawlerTranslator) {
+  return runId ? runId.slice(0, 8) : t("crawler.unknown");
+}
+
+function formatNullableDate(value: string | null, language: Language, t: CrawlerTranslator) {
+  if (!value || !Number.isFinite(new Date(value).getTime())) return t("crawler.notAvailable");
+  return new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en-US", {
+    year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function CrawlerError({ error, compact = false, origin = "backend" }: {
+  error: string;
+  compact?: boolean;
+  origin?: CrawlerErrorOrigin;
+}) {
+  const { t } = useI18n();
+  const { key, details } = describeCrawlerError(error, origin);
+  const content = (
+    <>
+      <span>{t(key)}</span>
+      {details !== null ? (
+        <details className="crawler-error-details">
+          <summary>{t("crawler.technicalDetails")}</summary>
+          <code>{details}</code>
+        </details>
+      ) : null}
+    </>
+  );
+  return compact ? <>{content}</> : <div className="message error">{content}</div>;
 }

@@ -1,3 +1,6 @@
+// @ts-expect-error Explicit TS extension also supports the standalone Node helper tests.
+import { defaultCrawlerTranslator, type CrawlerTranslator } from "./availability-crawler-helper-messages.ts";
+
 export type CrawlRunLike = {
   status: string | null;
 } | null;
@@ -84,18 +87,18 @@ export function countStaleRunningItems(items: CrawlRunItemLike[], nowMs = Date.n
   }, 0);
 }
 
-export function describeCrawlerSnapshotQuality(item: CrawlRunItemLike | null) {
+export function describeCrawlerSnapshotQuality(item: CrawlRunItemLike | null, t: CrawlerTranslator = defaultCrawlerTranslator) {
   const committed = Boolean(item?.committed_at && item.status && ["succeeded", "unavailable", "no_units_found"].includes(item.status));
   if (committed && item?.snapshot_status === "complete") {
-    return { label: "Complete snapshot", tone: "active", note: "Complete snapshot committed. Publish safety checks still apply." };
+    return { label: t("crawlerHelpers.snapshotCompleteLabel"), tone: "active", note: t("crawlerHelpers.snapshotCompleteNote") };
   }
   if (committed && item?.snapshot_status === "confirmed_empty") {
-    return { label: "Confirmed empty", tone: "active", note: "Verified empty snapshot committed. Publish safety checks still apply." };
+    return { label: t("crawlerHelpers.snapshotEmptyLabel"), tone: "active", note: t("crawlerHelpers.snapshotEmptyNote") };
   }
   if (item?.snapshot_status === "partial") {
-    return { label: "Partial snapshot", tone: "pending", note: "Incomplete coverage. Existing inventory is preserved." };
+    return { label: t("crawlerHelpers.snapshotPartialLabel"), tone: "pending", note: t("crawlerHelpers.snapshotPartialNote") };
   }
-  return { label: "Unverified", tone: "pending", note: "Snapshot completeness is unverified. Existing inventory is preserved." };
+  return { label: t("crawlerHelpers.snapshotUnverifiedLabel"), tone: "pending", note: t("crawlerHelpers.snapshotUnverifiedNote") };
 }
 
 export function summarizeCrawlerSnapshotQuality(items: CrawlRunItemLike[]) {
@@ -219,6 +222,7 @@ export type AvailabilityCrawlerRunSummaryLike = {
 };
 
 export type AvailabilityCrawlerOverviewCard = {
+  id: "buildings" | "queue" | "running" | "review";
   helper: string;
   label: string;
   tone?: "brand" | "danger" | "success";
@@ -227,11 +231,17 @@ export type AvailabilityCrawlerOverviewCard = {
 
 export const defaultAvailabilityCrawlerRegionFilter: AvailabilityCrawlerRegionFilter = "NJ";
 
-export const availabilityCrawlerRegionOptions: { filter: AvailabilityCrawlerRegionFilter; label: string }[] = [
-  { filter: "NJ", label: "New Jersey" },
-  { filter: "NY", label: "New York" },
-  { filter: "all", label: "All markets" },
-];
+export function getAvailabilityCrawlerRegionOptions(
+  t: CrawlerTranslator = defaultCrawlerTranslator
+): { filter: AvailabilityCrawlerRegionFilter; label: string }[] {
+  return [
+    { filter: "NJ", label: t("crawlerHelpers.region_NJ") },
+    { filter: "NY", label: t("crawlerHelpers.region_NY") },
+    { filter: "all", label: t("crawlerHelpers.region_all") },
+  ];
+}
+
+export const availabilityCrawlerRegionOptions = getAvailabilityCrawlerRegionOptions();
 
 export function isConcreteAvailabilityCrawlerSource(source: AvailabilityCrawlerSourceLike) {
   return Boolean(source.provider_status && concreteSourceStatuses.has(source.provider_status) && source.availability_url);
@@ -355,18 +365,21 @@ export function summarizeAvailabilityCrawlerRegions<T extends AvailabilityCrawle
 
 export function describeAvailabilityCrawlerRegionFilter(
   regionFilter: AvailabilityCrawlerRegionFilter,
-  summary: AvailabilityCrawlerRegionSummary
+  summary: AvailabilityCrawlerRegionSummary,
+  t: CrawlerTranslator = defaultCrawlerTranslator
 ) {
-  const label = availabilityCrawlerRegionOptions.find((option) => option.filter === regionFilter)?.label ?? "Selected market";
+  const label = getAvailabilityCrawlerRegionOptions(t).find((option) => option.filter === regionFilter)?.label ?? t("crawlerHelpers.regionSelected");
   return {
-    buildingLabel: `${summary.buildingCount.toLocaleString("en-US")} ${summary.buildingCount === 1 ? "building" : "buildings"}`,
+    buildingLabel: t(summary.buildingCount === 1 ? "crawlerHelpers.buildingCountOne" : "crawlerHelpers.buildingCountOther", {
+      count: summary.buildingCount.toLocaleString("en-US"),
+    }),
     label,
-    runnableLabel: `${summary.runnableBuildingCount.toLocaleString("en-US")} crawl-ready ${
-      summary.runnableBuildingCount === 1 ? "building" : "buildings"
-    }`,
-    sourceLabel: `${summary.sourceCount.toLocaleString("en-US")} source ${
-      summary.sourceCount === 1 ? "row" : "rows"
-    }`,
+    runnableLabel: t(summary.runnableBuildingCount === 1 ? "crawlerHelpers.runnableBuildingCountOne" : "crawlerHelpers.runnableBuildingCountOther", {
+      count: summary.runnableBuildingCount.toLocaleString("en-US"),
+    }),
+    sourceLabel: t(summary.sourceCount === 1 ? "crawlerHelpers.sourceRowCountOne" : "crawlerHelpers.sourceRowCountOther", {
+      count: summary.sourceCount.toLocaleString("en-US"),
+    }),
   };
 }
 
@@ -378,14 +391,14 @@ export function summarizeCrawlerInventory({
   catalogBuildingCount?: number | null;
   inventoryBuildingCount: number;
   sourceRecordCount: number;
-}) {
+}, t: CrawlerTranslator = defaultCrawlerTranslator) {
   return {
     coverageValue: catalogBuildingCount
       ? `${inventoryBuildingCount.toLocaleString("en-US")} / ${catalogBuildingCount.toLocaleString("en-US")}`
       : inventoryBuildingCount.toLocaleString("en-US"),
-    coverageHelper: catalogBuildingCount ? "active buildings in crawler inventory" : "buildings in crawler inventory",
+    coverageHelper: t(catalogBuildingCount ? "crawlerHelpers.inventoryActiveBuildings" : "crawlerHelpers.inventoryBuildings"),
     sourceRecordValue: sourceRecordCount.toLocaleString("en-US"),
-    sourceRecordHelper: "availability URLs stored under those building rows",
+    sourceRecordHelper: t("crawlerHelpers.inventorySourceRecords"),
   };
 }
 
@@ -405,27 +418,39 @@ export function buildAvailabilityCrawlerOverviewCards({
   regionLabel: string;
   runSummary: AvailabilityCrawlerRunSummaryLike;
   sourceCount: number;
-}): AvailabilityCrawlerOverviewCard[] {
+}, t: CrawlerTranslator = defaultCrawlerTranslator): AvailabilityCrawlerOverviewCard[] {
   return [
     {
-      helper: `${readyBuildingCount.toLocaleString("en-US")} crawl-ready · ${sourceCount.toLocaleString("en-US")} source rows`,
-      label: `${regionLabel} buildings`,
+      id: "buildings",
+      helper: t("crawlerHelpers.overviewBuildingsHelper", {
+        readyCount: readyBuildingCount.toLocaleString("en-US"), sourceCount: sourceCount.toLocaleString("en-US"),
+      }),
+      label: t("crawlerHelpers.overviewBuildingsLabel", { region: regionLabel }),
       value: buildingCount.toLocaleString("en-US"),
     },
     {
-      helper: `${runSummary.processed.toLocaleString("en-US")}/${runSummary.total.toLocaleString("en-US")} processed`,
-      label: "Current queue",
+      id: "queue",
+      helper: t("crawlerHelpers.overviewQueueHelper", {
+        processed: runSummary.processed.toLocaleString("en-US"), total: runSummary.total.toLocaleString("en-US"),
+      }),
+      label: t("crawlerHelpers.overviewQueueLabel"),
       tone: "brand",
       value: `${runSummary.progressPercentage}%`,
     },
     {
-      helper: `${runSummary.running.toLocaleString("en-US")} running · ${runSummary.queued.toLocaleString("en-US")} queued`,
-      label: "Crawling now",
+      id: "running",
+      helper: t("crawlerHelpers.overviewRunningHelper", {
+        running: runSummary.running.toLocaleString("en-US"), queued: runSummary.queued.toLocaleString("en-US"),
+      }),
+      label: t("crawlerHelpers.overviewRunningLabel"),
       value: runSummary.active.toLocaleString("en-US"),
     },
     {
-      helper: `${missingURLCount.toLocaleString("en-US")} missing URL · ${runSummary.failed.toLocaleString("en-US")} failed in this run`,
-      label: "Needs review",
+      id: "review",
+      helper: t("crawlerHelpers.overviewReviewHelper", {
+        missingURL: missingURLCount.toLocaleString("en-US"), failed: runSummary.failed.toLocaleString("en-US"),
+      }),
+      label: t("crawlerHelpers.overviewReviewLabel"),
       tone: "danger",
       value: attentionCount.toLocaleString("en-US"),
     },
@@ -458,46 +483,58 @@ export type CrawlerRunListSection<T> = {
 
 export const defaultCrawlerRunListFilter: CrawlerRunListFilter = "all";
 
-export const crawlerRunListFilterOptions: { filter: CrawlerRunListFilter; label: string }[] = [
-  { filter: "all", label: "All tasks" },
-  { filter: "active", label: "Crawling now" },
-  { filter: "done", label: "Completed" },
-  { filter: "failed", label: "Failed" },
-  { filter: "not_started", label: "Not started" },
-];
+export function getCrawlerRunListFilterOptions(
+  t: CrawlerTranslator = defaultCrawlerTranslator
+): { filter: CrawlerRunListFilter; label: string }[] {
+  return [
+    { filter: "all", label: t("crawlerHelpers.runFilter_all") },
+    { filter: "active", label: t("crawlerHelpers.runFilter_active") },
+    { filter: "done", label: t("crawlerHelpers.runFilter_done") },
+    { filter: "failed", label: t("crawlerHelpers.runFilter_failed") },
+    { filter: "not_started", label: t("crawlerHelpers.runFilter_not_started") },
+  ];
+}
 
-export const crawlerSourceFilterOptions: { filter: CrawlerSourceFilter; label: string }[] = [
-  { filter: "all", label: "All source types" },
-  { filter: "ready", label: "Ready to crawl" },
-  { filter: "browser", label: "Needs browser" },
-  { filter: "attention", label: "Needs review" },
-  { filter: "missing_url", label: "Missing URL" },
-  { filter: "disabled", label: "Disabled" },
-];
+export const crawlerRunListFilterOptions = getCrawlerRunListFilterOptions();
+
+export function getCrawlerSourceFilterOptions(
+  t: CrawlerTranslator = defaultCrawlerTranslator
+): { filter: CrawlerSourceFilter; label: string }[] {
+  return [
+    { filter: "all", label: t("crawlerHelpers.sourceFilter_all") },
+    { filter: "ready", label: t("crawlerHelpers.sourceFilter_ready") },
+    { filter: "browser", label: t("crawlerHelpers.sourceFilter_browser") },
+    { filter: "attention", label: t("crawlerHelpers.sourceFilter_attention") },
+    { filter: "missing_url", label: t("crawlerHelpers.sourceFilter_missing_url") },
+    { filter: "disabled", label: t("crawlerHelpers.sourceFilter_disabled") },
+  ];
+}
+
+export const crawlerSourceFilterOptions = getCrawlerSourceFilterOptions();
 
 const crawlerRunListSectionOptions: {
-  helper: string;
-  label: string;
+  helperKey: string;
+  labelKey: string;
   state: CrawlerRunListState;
 }[] = [
   {
-    helper: "Running now or queued in the current crawler run.",
-    label: "Crawling now",
+    helperKey: "crawlerHelpers.runSectionActiveHelper",
+    labelKey: "crawlerHelpers.runFilter_active",
     state: "active",
   },
   {
-    helper: "Processed tasks. Snapshot quality is shown separately from task completion.",
-    label: "Completed",
+    helperKey: "crawlerHelpers.runSectionDoneHelper",
+    labelKey: "crawlerHelpers.runFilter_done",
     state: "done",
   },
   {
-    helper: "Failed or unsupported rows that need review.",
-    label: "Failed",
+    helperKey: "crawlerHelpers.runSectionFailedHelper",
+    labelKey: "crawlerHelpers.runFilter_failed",
     state: "failed",
   },
   {
-    helper: "Known sources that have not been processed by the current run yet.",
-    label: "Not started",
+    helperKey: "crawlerHelpers.runSectionNotStartedHelper",
+    labelKey: "crawlerHelpers.runFilter_not_started",
     state: "not_started",
   },
 ];
@@ -526,7 +563,8 @@ export function classifyCrawlerRunListState({
 export function groupCrawlerRunListSections<T>(
   rows: T[],
   stateForRow: (row: T) => CrawlerRunListState,
-  options: { includeEmpty?: boolean } = {}
+  options: { includeEmpty?: boolean } = {},
+  t: CrawlerTranslator = defaultCrawlerTranslator
 ): CrawlerRunListSection<T>[] {
   const grouped = new Map<CrawlerRunListState, T[]>();
   for (const option of crawlerRunListSectionOptions) {
@@ -539,7 +577,9 @@ export function groupCrawlerRunListSections<T>(
 
   return crawlerRunListSectionOptions
     .map((option) => ({
-      ...option,
+      helper: t(option.helperKey),
+      label: t(option.labelKey),
+      state: option.state,
       rows: grouped.get(option.state) ?? [],
     }))
     .filter((section) => options.includeEmpty || section.rows.length > 0);
@@ -566,87 +606,89 @@ export function summarizeCrawlerRunListStateCounts(states: CrawlerRunListState[]
   return counts;
 }
 
-export function describeCrawlerRunListFilter(filter: CrawlerRunListFilter, count: number) {
-  const countLabel = `${count.toLocaleString("en-US")} ${count === 1 ? "building" : "buildings"}`;
+export function describeCrawlerRunListFilter(filter: CrawlerRunListFilter, count: number, t: CrawlerTranslator = defaultCrawlerTranslator) {
+  const countLabel = t(count === 1 ? "crawlerHelpers.buildingCountOne" : "crawlerHelpers.buildingCountOther", {
+    count: count.toLocaleString("en-US"),
+  });
 
   if (filter === "active") {
     return {
       countLabel,
-      helper: "Running now or queued in the current run, like the active download list.",
-      title: "Crawling now",
+      helper: t("crawlerHelpers.runFilterActiveHelper"),
+      title: t("crawlerHelpers.runFilter_active"),
     };
   }
 
   if (filter === "done") {
     return {
       countLabel,
-      helper: "Processed tasks. Completion does not establish snapshot completeness or inventory accuracy.",
-      title: "Completed",
+      helper: t("crawlerHelpers.runFilterDoneHelper"),
+      title: t("crawlerHelpers.runFilter_done"),
     };
   }
 
   if (filter === "failed") {
     return {
       countLabel,
-      helper: "Needs review before these sources can be trusted in automated runs.",
-      title: "Failed list",
+      helper: t("crawlerHelpers.runFilterFailedHelper"),
+      title: t("crawlerHelpers.runFilterFailedTitle"),
     };
   }
 
   if (filter === "not_started") {
     return {
       countLabel,
-      helper: "Ready or known sources that have not been processed by the current run yet.",
-      title: "Not started",
+      helper: t("crawlerHelpers.runFilterNotStartedHelper"),
+      title: t("crawlerHelpers.runFilter_not_started"),
     };
   }
 
   return {
     countLabel,
-    helper: "The table below is split into Crawling now, Completed, Failed, and Not started, so the run reads like a download queue.",
-    title: "All crawler tasks",
+    helper: t("crawlerHelpers.runFilterAllHelper"),
+    title: t("crawlerHelpers.runFilterAllTitle"),
   };
 }
 
-export function describeCrawlerSourceFilter(filter: CrawlerSourceFilter) {
+export function describeCrawlerSourceFilter(filter: CrawlerSourceFilter, t: CrawlerTranslator = defaultCrawlerTranslator) {
   if (filter === "ready") {
     return {
-      helper: "Sources that already have a verified parser and can be queued now.",
-      label: "Ready to crawl",
+      helper: t("crawlerHelpers.sourceFilterReadyHelper"),
+      label: t("crawlerHelpers.sourceFilter_ready"),
     };
   }
 
   if (filter === "browser") {
     return {
-      helper: "Sources that need rendered-page crawling instead of a simple static fetch.",
-      label: "Needs browser",
+      helper: t("crawlerHelpers.sourceFilterBrowserHelper"),
+      label: t("crawlerHelpers.sourceFilter_browser"),
     };
   }
 
   if (filter === "attention") {
     return {
-      helper: "Sources that need review because the parser is missing, stale, or recently failed.",
-      label: "Needs review",
+      helper: t("crawlerHelpers.sourceFilterAttentionHelper"),
+      label: t("crawlerHelpers.sourceFilter_attention"),
     };
   }
 
   if (filter === "missing_url") {
     return {
-      helper: "Availability link missing. These buildings need source discovery before crawling.",
-      label: "Missing URL",
+      helper: t("crawlerHelpers.sourceFilterMissingURLHelper"),
+      label: t("crawlerHelpers.sourceFilter_missing_url"),
     };
   }
 
   if (filter === "disabled") {
     return {
-      helper: "Crawler disabled for this source until the availability surface is verified.",
-      label: "Disabled",
+      helper: t("crawlerHelpers.sourceFilterDisabledHelper"),
+      label: t("crawlerHelpers.sourceFilter_disabled"),
     };
   }
 
   return {
-    helper: "No source-type filter is applied.",
-    label: "All source types",
+    helper: t("crawlerHelpers.sourceFilterAllHelper"),
+    label: t("crawlerHelpers.sourceFilter_all"),
   };
 }
 

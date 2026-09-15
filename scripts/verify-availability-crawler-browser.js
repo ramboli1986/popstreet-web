@@ -4,6 +4,8 @@ async (page) => {
   const check = (condition, message) => { if (!condition) throw new Error(message); };
   const runId = "11111111-1111-4111-8111-111111111111";
   const now = new Date().toISOString();
+  let sourceLoads = 0;
+  let schemaOutdated = false;
   let active = false, launchConfirmed = false, launchRejected = false, enqueueCalls = 0, launchCalls = 0, published = null;
   const sources = ["Complete Example", "Partial Example", "Unverified Example", "Empty Example"].map((name, index) => ({
     source_id: `source-${index}`, building_id: `building-${index}`, building_name: name,
@@ -33,11 +35,14 @@ async (page) => {
     }
     if (!url.startsWith("http://127.0.0.1:59999/")) return route.continue();
     if (path.includes("account_profiles")) return json({ id: "offline-admin", full_name: "Offline QA", role: "admin", account_kind: "admin", status: "active" });
-    if (path.endsWith("availability_crawler_dashboard")) return json(sources);
+    if (path.endsWith("availability_crawler_dashboard")) { sourceLoads++; return json(sources); }
     if (path.endsWith("availability_crawl_runs")) return json([{
       id: runId, status: active ? "queued" : "succeeded", started_at: now, finished_at: active ? null : now,
       observation_count: 30, source_count: 4,
     }]);
+    if (path.endsWith("availability_crawl_run_items") && schemaOutdated) return json({
+      message: "column availability_crawl_run_items.snapshot_status does not exist", code: "42703",
+    }, 400);
     if (path.endsWith("availability_crawl_run_items")) return json(sources.map((source, index) => ({
       id: `item-${index}`, run_id: runId, source_id: source.source_id, building_id: source.building_id,
       status: active ? "queued" : index === 3 ? "unavailable" : "succeeded",
@@ -58,6 +63,7 @@ async (page) => {
     return json([]);
   });
   await page.addInitScript(() => {
+    if (!localStorage.getItem("popstreet.admin.language")) localStorage.setItem("popstreet.admin.language", "zh");
     localStorage.setItem("sb-127-auth-token", JSON.stringify({
       access_token: "offline.token.only", refresh_token: "offline-refresh", expires_at: Math.floor(Date.now() / 1000) + 3600,
       expires_in: 3600, token_type: "bearer", user: { id: "offline-admin", email: "qa@example.invalid", user_metadata: {} },
@@ -65,6 +71,40 @@ async (page) => {
   });
   await page.setViewportSize({ width: 1440, height: 1080 });
   await page.goto("http://localhost:3014/availability-crawler");
+  await page.evaluate(() => localStorage.setItem("popstreet.admin.language", "zh"));
+  await page.reload();
+  await page.getByText("完整数据", { exact: true }).waitFor();
+  for (const label of ["数据不完整", "未核验", "已确认无房源"]) {
+    check(await page.getByText(label, { exact: true }).isVisible(), `Chinese quality label missing: ${label}`);
+  }
+  check(await page.getByRole("heading", { name: "可租房源抓取", exact: true }).isVisible(), "Chinese title missing");
+  check(await page.getByRole("button", { name: "抓取新泽西州", exact: true }).isEnabled(), "Chinese run button missing");
+  check(await page.getByRole("columnheader", { name: "平台与抓取方式", exact: true }).isVisible(), "Chinese table header missing");
+  check(!/crawler(?:Helpers)?\./.test(await page.locator(".crawler-page").innerText()), "Unresolved translation key");
+  await page.getByRole("combobox").nth(3).selectOption("official_units_api");
+  await page.getByPlaceholder("搜索大楼、平台、城市或抓取方式").fill("Partial");
+  const sourceLoadsBeforeSwitch = sourceLoads;
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  await page.getByRole("heading", { name: "Availability crawler queue", exact: true }).waitFor();
+  check(await page.getByPlaceholder("Search building, provider, city, strategy...").inputValue() === "Partial", "Switch reset search");
+  check(await page.getByRole("combobox").nth(3).inputValue() === "official_units_api", "Switch reset strategy");
+  check(sourceLoads === sourceLoadsBeforeSwitch, "Switch reloaded crawler data");
+  check(enqueueCalls === 0 && launchCalls === 0, "Switch launched a crawl");
+  await page.getByRole("button", { name: "中文", exact: true }).click();
+  await page.getByRole("button", { name: "清除筛选", exact: true }).click();
+  await page.getByRole("button", { name: "预览变更", exact: true }).click();
+  await page.getByText("可发布", { exact: true }).waitFor();
+  check(await page.getByRole("button", { name: "发布新泽西州", exact: true }).isEnabled(), "Chinese review did not enable publish");
+  await page.screenshot({ path: "/tmp/crawler-localization-zh-desktop.png", fullPage: true, animations: "disabled" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: "/tmp/crawler-localization-zh-mobile.png", fullPage: true, animations: "disabled" });
+  const chineseWidth = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: window.innerWidth }));
+  check(chineseWidth.scroll <= chineseWidth.viewport, "Chinese page overflows mobile");
+  await page.setViewportSize({ width: 1440, height: 1080 });
+  await page.reload();
+  await page.getByText("完整数据", { exact: true }).waitFor();
+  check(await page.getByRole("heading", { name: "可租房源抓取", exact: true }).isVisible(), "Saved Chinese language lost on reload");
+  await page.getByRole("button", { name: "EN", exact: true }).click();
   await page.getByText("Complete snapshot", { exact: true }).waitFor();
   for (const label of ["Partial snapshot", "Unverified", "Confirmed empty"]) {
     check(await page.getByText(label, { exact: true }).isVisible(), `${label} missing`);
@@ -83,6 +123,8 @@ async (page) => {
   check(await publishButton.isEnabled(), "Versioned preview should enable publish");
   await page.evaluate(() => { window.confirm = () => true; });
   await publishButton.click();
+  await page.getByText("Inventory changed since the preview. Review the latest changes before publishing.", { exact: true }).waitFor();
+  await page.locator(".message.error summary").click();
   await page.getByText("preview_fingerprint_changed", { exact: true }).waitFor();
   check(published?.p_preview_fingerprint === preview.preview_fingerprint, "Publish omitted reviewed fingerprint");
   check(published?.p_reset_existing_inventory === false, "Publish requested inventory reset");
@@ -103,6 +145,8 @@ async (page) => {
   launchRejected = true;
   await runButton.click();
   const rejection = page.getByText("Cloud Run rejected launch (HTTP 403): offline permission denied", { exact: true });
+  await page.getByText("The service rejected this request. Check the worker\'s access permissions.", { exact: true }).waitFor();
+  await page.locator(".message.error summary").click();
   await rejection.waitFor();
   await page.waitForTimeout(3500);
   check(await rejection.isVisible(), "Polling erased the actionable Cloud rejection");
@@ -122,5 +166,18 @@ async (page) => {
   await page.screenshot({ path: "/tmp/crawler-reliability-mobile-quality.png" });
   const width = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, viewport: window.innerWidth }));
   check(width.scroll <= width.viewport, `Page overflows mobile viewport: ${JSON.stringify(width)}`);
-  console.log(JSON.stringify({ enqueueCalls, launchCalls, fingerprint: published.p_preview_fingerprint, desktop: "/tmp/crawler-reliability-desktop.png", mobile: "/tmp/crawler-reliability-mobile.png" }));
+  schemaOutdated = true;
+  await page.setViewportSize({ width: 1440, height: 1080 });
+  await page.getByRole("button", { name: "中文", exact: true }).click();
+  await page.reload();
+  await page.getByText("爬虫数据库尚未完成更新。请先应用配套数据库迁移，再进行抓取或发布。", { exact: true }).waitFor();
+  await page.locator(".message.error summary").click();
+  await page.getByText("column availability_crawl_run_items.snapshot_status does not exist", { exact: true }).waitFor();
+  const loadsBeforeErrorTranslation = sourceLoads;
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  await page.getByText("The crawler database upgrade is incomplete. Apply the matching database migrations before running or publishing.", { exact: true }).waitFor();
+  check(sourceLoads === loadsBeforeErrorTranslation, "Translating an error reloaded crawler data");
+  schemaOutdated = false;
+  return { checks: "passed", enqueueCalls, launchCalls, fingerprint: published.p_preview_fingerprint,
+    desktop: "/tmp/crawler-localization-zh-desktop.png", mobile: "/tmp/crawler-localization-zh-mobile.png" };
 }

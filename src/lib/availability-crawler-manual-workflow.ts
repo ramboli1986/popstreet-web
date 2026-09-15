@@ -1,3 +1,6 @@
+// @ts-expect-error Explicit TS extension also supports the standalone Node helper tests.
+import { defaultCrawlerTranslator, type CrawlerTranslator } from "./availability-crawler-helper-messages.ts";
+
 export type AvailabilityCrawlerManualReview = {
   checked_source_count?: number;
   dry_run: boolean;
@@ -21,20 +24,21 @@ export type AvailabilityCrawlerManualStepState = "active" | "complete" | "waitin
 
 export async function confirmAvailabilityCrawlerLaunch(
   requestLaunch: () => Promise<Response>,
-  { signal, pause = () => new Promise<void>((resolve) => setTimeout(resolve, 3000)) }: {
+  { signal, pause = () => new Promise<void>((resolve) => setTimeout(resolve, 3000)), t = defaultCrawlerTranslator }: {
     signal?: AbortSignal;
     pause?: () => Promise<void>;
+    t?: CrawlerTranslator;
   } = {},
 ) {
   while (!signal?.aborted) {
     const response = await requestLaunch();
     const payload = await response.json().catch(() => null) as { started?: boolean; pending?: boolean; error?: string } | null;
-    if (!response.ok) throw new Error(payload?.error ?? "Could not confirm the crawler launch.");
+    if (!response.ok) throw new Error(payload?.error ?? t("crawlerHelpers.launchFailed"));
     if (payload?.started && !payload.pending) return;
-    if (!payload?.pending) throw new Error("Crawler launch confirmation is missing. Refresh before trying again.");
+    if (!payload?.pending) throw new Error(t("crawlerHelpers.launchMissingConfirmation"));
     await pause();
   }
-  throw new Error("Crawler launch confirmation was cancelled.");
+  throw new Error(t("crawlerHelpers.launchCancelled"));
 }
 
 export function canPublishAvailabilityCrawlerReview(
@@ -53,23 +57,29 @@ export function canPublishAvailabilityCrawlerReview(
   );
 }
 
-export function describeAvailabilityCrawlerReview(review: AvailabilityCrawlerManualReview) {
+export function describeAvailabilityCrawlerReview(review: AvailabilityCrawlerManualReview, t: CrawlerTranslator = defaultCrawlerTranslator) {
   const successPercentage = Math.round(review.success_ratio * 100);
   const qualityKnown = typeof review.complete_source_count === "number" && typeof review.confirmed_empty_source_count === "number";
   const qualityCopy = qualityKnown
-    ? `${review.complete_source_count} complete, ${review.confirmed_empty_source_count} confirmed empty, ${review.partial_source_count ?? 0} partial, ${review.unknown_source_count ?? 0} unknown. ${successPercentage}% passed snapshot safety checks.`
-    : "Snapshot quality is unverified. Refresh the preview before publishing.";
+    ? t("crawlerHelpers.reviewQualityKnown", {
+      complete: review.complete_source_count ?? 0,
+      empty: review.confirmed_empty_source_count ?? 0,
+      partial: review.partial_source_count ?? 0,
+      unknown: review.unknown_source_count ?? 0,
+      percentage: successPercentage,
+    })
+    : t("crawlerHelpers.reviewQualityUnknown");
   if (review.eligible && review.preview_fingerprint && !review.reset_existing_inventory) {
     return {
-      body: `${qualityCopy} The reviewed changes are ready for approval.`,
-      title: "Ready to publish",
+      body: t("crawlerHelpers.reviewReadyBody", { quality: qualityCopy }),
+      title: t("crawlerHelpers.reviewReadyTitle"),
     };
   }
 
-  const reasons = review.gate_failures.map(reviewFailureCopy).join(" ");
+  const reasons = review.gate_failures.map((reason) => reviewFailureCopy(reason, t)).join(" ");
   return {
     body: `${qualityCopy} ${reasons}`.trim(),
-    title: "Review required before publishing",
+    title: t("crawlerHelpers.reviewRequiredTitle"),
   };
 }
 
@@ -81,40 +91,40 @@ export function availabilityCrawlerManualSteps({
   activeRun: { id: string; status: string } | null;
   preview: AvailabilityCrawlerManualReview | null;
   published: boolean;
-}) {
+}, t: CrawlerTranslator = defaultCrawlerTranslator) {
   if (activeRun) {
     return [
-      manualStep("1", "Crawl", "Cloud worker is processing building sources.", "active"),
-      manualStep("2", "Review", "Available after this run finishes.", "waiting"),
-      manualStep("3", "Publish", "Requires a successful review and your confirmation.", "waiting"),
+      manualStep("1", t("crawlerHelpers.stepCrawl"), t("crawlerHelpers.stepCrawlActive"), "active"),
+      manualStep("2", t("crawlerHelpers.stepReview"), t("crawlerHelpers.stepReviewWaiting"), "waiting"),
+      manualStep("3", t("crawlerHelpers.stepPublish"), t("crawlerHelpers.stepPublishWaiting"), "waiting"),
     ];
   }
 
   if (published) {
     return [
-      manualStep("1", "Crawl", "Latest run completed.", "complete"),
-      manualStep("2", "Review", "Safety review completed.", "complete"),
-      manualStep("3", "Publish", "Inventory published.", "complete"),
+      manualStep("1", t("crawlerHelpers.stepCrawl"), t("crawlerHelpers.stepCrawlComplete"), "complete"),
+      manualStep("2", t("crawlerHelpers.stepReview"), t("crawlerHelpers.stepReviewComplete"), "complete"),
+      manualStep("3", t("crawlerHelpers.stepPublish"), t("crawlerHelpers.stepPublishComplete"), "complete"),
     ];
   }
 
   if (preview) {
     return [
-      manualStep("1", "Crawl", "Latest run completed.", "complete"),
-      manualStep("2", "Review", preview.eligible ? "Safety checks passed." : "Issues need attention.", "complete"),
+      manualStep("1", t("crawlerHelpers.stepCrawl"), t("crawlerHelpers.stepCrawlComplete"), "complete"),
+      manualStep("2", t("crawlerHelpers.stepReview"), t(preview.eligible ? "crawlerHelpers.stepReviewPassed" : "crawlerHelpers.stepReviewIssues"), "complete"),
       manualStep(
         "3",
-        "Publish",
-        preview.eligible ? "Ready for your confirmation." : "Blocked until the review passes.",
+        t("crawlerHelpers.stepPublish"),
+        t(preview.eligible ? "crawlerHelpers.stepPublishReady" : "crawlerHelpers.stepPublishBlocked"),
         preview.eligible ? "active" : "waiting",
       ),
     ];
   }
 
   return [
-    manualStep("1", "Crawl", "Start a cloud crawl for the selected market.", "active"),
-    manualStep("2", "Review", "Inspect changes and failed sources.", "waiting"),
-    manualStep("3", "Publish", "Publish only after review.", "waiting"),
+    manualStep("1", t("crawlerHelpers.stepCrawl"), t("crawlerHelpers.stepCrawlStart"), "active"),
+    manualStep("2", t("crawlerHelpers.stepReview"), t("crawlerHelpers.stepReviewStart"), "waiting"),
+    manualStep("3", t("crawlerHelpers.stepPublish"), t("crawlerHelpers.stepPublishStart"), "waiting"),
   ];
 }
 
@@ -127,15 +137,15 @@ function manualStep(
   return { body, number, state, title };
 }
 
-function reviewFailureCopy(reason: string) {
-  if (reason === "no_verified_snapshots") return "No verified snapshots are ready to publish.";
-  if (reason === "abnormal_inventory_drop") return "The inventory decrease needs separate operator review.";
-  if (reason === "reset_inventory_not_supported") return "Whole-inventory replacement is not supported.";
-  if (reason === "run_still_active") return "The crawl is still running.";
-  if (reason === "run_status_not_publishable") return "The run did not finish in a publishable state.";
-  if (reason === "success_ratio_below_minimum") return "Too few sources passed snapshot safety checks.";
-  if (reason === "failed_count_above_maximum") return "The failed-source count is above the safety limit.";
-  if (reason === "run_market_mismatch") return "The reviewed run does not match the selected market.";
-  if (reason === "no_sources_in_market") return "The run contains no sources for this market.";
-  return "This run did not pass every publish safety check.";
+function reviewFailureCopy(reason: string, t: CrawlerTranslator) {
+  if (reason === "no_verified_snapshots") return t("crawlerHelpers.reviewGate_no_verified_snapshots");
+  if (reason === "abnormal_inventory_drop") return t("crawlerHelpers.reviewGate_abnormal_inventory_drop");
+  if (reason === "reset_inventory_not_supported") return t("crawlerHelpers.reviewGate_reset_inventory_not_supported");
+  if (reason === "run_still_active") return t("crawlerHelpers.reviewGate_run_still_active");
+  if (reason === "run_status_not_publishable") return t("crawlerHelpers.reviewGate_run_status_not_publishable");
+  if (reason === "success_ratio_below_minimum") return t("crawlerHelpers.reviewGate_success_ratio_below_minimum");
+  if (reason === "failed_count_above_maximum") return t("crawlerHelpers.reviewGate_failed_count_above_maximum");
+  if (reason === "run_market_mismatch") return t("crawlerHelpers.reviewGate_run_market_mismatch");
+  if (reason === "no_sources_in_market") return t("crawlerHelpers.reviewGate_no_sources_in_market");
+  return t("crawlerHelpers.reviewGateUnknown");
 }

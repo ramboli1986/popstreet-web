@@ -15,6 +15,8 @@ import {
   XCircle
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { pollCrawlerWorkerStatus } from "@/lib/availability-crawler-status-polling";
+import { crawlerWorkerStatusMessage, type CrawlerWorkerState, type CrawlerWorkerStatus } from "@/lib/availability-crawler-worker-status";
 import {
   availabilityCrawlerManualSteps,
   canPublishAvailabilityCrawlerReview,
@@ -106,6 +108,7 @@ export function AvailabilityCrawlerDashboard() {
   const [sources, setSources] = useState<AvailabilityCrawlerDashboardRow[]>([]);
   const [runs, setRuns] = useState<AvailabilityCrawlRun[]>([]);
   const [runItems, setRunItems] = useState<AvailabilityCrawlRunItem[]>([]);
+  const [workerStatus, setWorkerStatus] = useState<CrawlerWorkerStatus | null>(null);
   const [regionFilter, setRegionFilter] = useState<AvailabilityCrawlerRegionFilter>(defaultAvailabilityCrawlerRegionFilter);
   const [runStateFilter, setRunStateFilter] = useState<CrawlerRunListFilter>(defaultCrawlerRunListFilter);
   const [activeFilter, setActiveFilter] = useState<CrawlerSourceFilter>("all");
@@ -123,66 +126,88 @@ export function AvailabilityCrawlerDashboard() {
   const [publishResult, setPublishResult] = useState<InventoryPublishResult | null>(null);
   const enqueueInFlight = useRef(false);
   const launchAbort = useRef<AbortController | null>(null);
+  const dashboardLoadId = useRef(0);
+  const dashboardInFlight = useRef<number | null>(null);
 
   useEffect(() => () => launchAbort.current?.abort(), []);
 
   const loadCrawlerDashboard = useCallback(async (options?: { quiet?: boolean }) => {
-    if (!options?.quiet) {
-      setIsLoading(true);
-      setError(null);
-    }
+    if (options?.quiet && dashboardInFlight.current !== null) return;
+    const loadId = ++dashboardLoadId.current;
+    dashboardInFlight.current = loadId;
+    try {
+      if (!options?.quiet) {
+        setIsLoading(true);
+        setError(null);
+      }
 
-    const [sourcesResult, runsResult] = await Promise.all([
-      loadAllCrawlerSourceRows(regionFilter),
-      supabase
-        .from("availability_crawl_runs")
-        .select("*")
-        .order("started_at", { ascending: false })
-        .limit(25)
-    ]);
+      const [sourcesResult, runsResult] = await Promise.all([
+        loadAllCrawlerSourceRows(regionFilter),
+        supabase
+          .from("availability_crawl_runs")
+          .select("*")
+          .order("started_at", { ascending: false })
+          .limit(25)
+      ]);
 
-    if (!options?.quiet) {
-      setIsLoading(false);
-    }
+      if (loadId !== dashboardLoadId.current) return;
 
-    if (sourcesResult.error || runsResult.error) {
-      setError(
-        sourcesResult.error?.message ??
-          runsResult.error?.message ??
-          "crawler.loadFailed"
-      );
-      return;
-    }
-
-    const loadedRuns = (runsResult.data ?? []) as AvailabilityCrawlRun[];
-    const runForProgress = loadedRuns.find(isCrawlerRunActive) ?? loadedRuns[0] ?? null;
-    let loadedRunItems: AvailabilityCrawlRunItem[] = [];
-
-    if (runForProgress) {
-      const runItemsResult = await supabase
-        .from("availability_crawl_run_items")
-        .select(
-          "id, run_id, source_id, building_id, provider_key, parser_strategy, status, snapshot_status, committed_at, attempt_id, lease_expires_at, heartbeat_at, started_at, finished_at, units_found, observations_created, changes_detected, error, buildings(name, area, city, state)"
-        )
-        .eq("run_id", runForProgress.id)
-        .order("created_at", { ascending: true })
-        .limit(1000);
-
-      if (runItemsResult.error) {
-        setError(runItemsResult.error.message);
+      if (sourcesResult.error || runsResult.error) {
+        setError(
+          sourcesResult.error?.message ??
+            runsResult.error?.message ??
+            "crawler.loadFailed"
+        );
         return;
       }
 
-      loadedRunItems = normalizeRunItemRows(runItemsResult.data ?? []);
-    }
+      const loadedRuns = (runsResult.data ?? []) as AvailabilityCrawlRun[];
+      const runForProgress = loadedRuns.find(isCrawlerRunActive) ?? loadedRuns[0] ?? null;
+      const loadedRunItems: AvailabilityCrawlRunItem[] = [];
 
-    setSources((sourcesResult.data ?? []) as AvailabilityCrawlerDashboardRow[]);
-    setRuns(loadedRuns);
-    setRunItems(loadedRunItems);
+      if (runForProgress) {
+        for (let offset = 0; ; offset += crawlerDashboardSourcePageSize) {
+          const runItemsResult = await supabase
+            .from("availability_crawl_run_items")
+            .select(
+              "id, run_id, source_id, building_id, provider_key, parser_strategy, status, snapshot_status, committed_at, attempt_id, lease_expires_at, heartbeat_at, started_at, finished_at, units_found, observations_created, changes_detected, error, buildings(name, area, city, state)"
+            )
+            .eq("run_id", runForProgress.id)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(offset, offset + crawlerDashboardSourcePageSize - 1);
+
+          if (loadId !== dashboardLoadId.current) return;
+
+          if (runItemsResult.error) {
+            setError(runItemsResult.error.message);
+            return;
+          }
+
+          loadedRunItems.push(...normalizeRunItemRows(runItemsResult.data ?? []));
+          if ((runItemsResult.data?.length ?? 0) < crawlerDashboardSourcePageSize) break;
+        }
+      }
+
+      setSources((sourcesResult.data ?? []) as AvailabilityCrawlerDashboardRow[]);
+      setRuns(loadedRuns);
+      setRunItems(loadedRunItems);
+    } catch {
+      if (loadId === dashboardLoadId.current) setError("crawler.loadFailed");
+    } finally {
+      if (loadId === dashboardLoadId.current) {
+        dashboardInFlight.current = null;
+        setIsLoading(false);
+      }
+    }
   }, [regionFilter]);
 
   useEffect(() => {
     loadCrawlerDashboard();
+    return () => {
+      dashboardLoadId.current++;
+      dashboardInFlight.current = null;
+    };
   }, [loadCrawlerDashboard]);
 
   useEffect(() => {
@@ -196,6 +221,9 @@ export function AvailabilityCrawlerDashboard() {
 
   const latestRun = runs[0] ?? null;
   const activeRun = useMemo(() => runs.find(isCrawlerRunActive) ?? null, [runs]);
+  const activeRunId = activeRun?.id;
+  const currentWorkerStatus = !isEnqueueing && workerStatus?.runId === activeRunId ? workerStatus : null;
+  const workerState = currentWorkerStatus?.workerState ?? "unknown";
   const latestPublishableRun = useMemo(
     () => runs.find((run) => run.status === "succeeded" || run.status === "partial") ?? null,
     [runs]
@@ -208,8 +236,9 @@ export function AvailabilityCrawlerDashboard() {
       activeRun,
       preview: publishReview,
       published: Boolean(publishResult && !publishResult.dry_run),
-    }, t),
-    [activeRun, publishResult, publishReview, t],
+    }, t).map((step) => activeRun && step.number === "1"
+      ? { ...step, body: t(crawlerWorkerStatusMessage(workerState)) } : step),
+    [activeRun, publishResult, publishReview, t, workerState],
   );
 
   useEffect(() => {
@@ -217,12 +246,30 @@ export function AvailabilityCrawlerDashboard() {
   }, [latestPublishableRun?.id, latestPublishableRun?.finished_at, latestPublishableRun?.observation_count, regionFilter]);
 
   useEffect(() => {
-    if (!hasActiveRun) return undefined;
-    const timer = window.setInterval(() => {
-      loadCrawlerDashboard({ quiet: true });
-    }, 3000);
-    return () => window.clearInterval(timer);
-  }, [hasActiveRun, loadCrawlerDashboard]);
+    if (!activeRunId || isEnqueueing) return;
+    return pollCrawlerWorkerStatus<CrawlerWorkerStatus>({
+      isVisible: () => document.visibilityState === "visible",
+      subscribeVisibility: (callback) => {
+        document.addEventListener("visibilitychange", callback);
+        return () => document.removeEventListener("visibilitychange", callback);
+      },
+      read: async (signal) => {
+        await loadCrawlerDashboard({ quiet: true });
+        const { data } = await supabase.auth.getSession();
+        if (!data.session?.access_token) throw new Error("Missing session");
+        signal.throwIfAborted();
+        const response = await fetch(`/api/availability-crawler/worker-status?runId=${encodeURIComponent(activeRunId)}`, {
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
+          cache: "no-store", signal: AbortSignal.any([signal, AbortSignal.timeout(45_000)]),
+        });
+        if (!response.ok) throw new Error("Status unavailable");
+        const status = await response.json() as CrawlerWorkerStatus;
+        if (status.runId !== activeRunId) throw new Error("Run changed");
+        return status;
+      },
+      onStatus: setWorkerStatus,
+    });
+  }, [activeRunId, isEnqueueing, loadCrawlerDashboard]);
 
   const regionSummaries = useMemo(() => summarizeAvailabilityCrawlerRegions(sources), [sources]);
   const selectedRegionSummary = regionSummaries[regionFilter];
@@ -335,6 +382,7 @@ export function AvailabilityCrawlerDashboard() {
     runItemSummary.running === staleRunningItemCount;
   const canRunSelectedRegion =
     !activeRunHasOutOfRegionSources &&
+    workerState !== "running" &&
     canTriggerCrawlerRun({
       activeRun,
       isEnqueueing: isEnqueueing || isResetting,
@@ -344,12 +392,14 @@ export function AvailabilityCrawlerDashboard() {
       staleRunningItemCount
     });
   const runButtonTitle =
-    activeRunHasOutOfRegionSources
+      activeRunHasOutOfRegionSources
       ? t("crawler.resetOtherMarket", { scope: selectedRegionCopy.label })
+      : workerState === "running"
+        ? t("crawler.workerRunningHint")
       : activeRun?.status === "queued" || canRestartStalledRun
       ? t("crawler.resumeHint")
       : activeRun?.status === "running"
-        ? t("crawler.workerRunningHint")
+        ? t(crawlerWorkerStatusMessage(workerState))
         : undefined;
 
   const startCrawlerWorker = useCallback(async (runId: string, sourceCount?: number) => {
@@ -360,6 +410,7 @@ export function AvailabilityCrawlerDashboard() {
     }
 
     launchAbort.current = new AbortController();
+    setWorkerStatus(null);
     const signal = launchAbort.current.signal;
     setEnqueueMessage({ key: "crawler.confirmingLaunch" });
     await confirmAvailabilityCrawlerLaunch(() => fetch("/api/availability-crawler/start-worker", {
@@ -426,6 +477,7 @@ export function AvailabilityCrawlerDashboard() {
         setEnqueueMessage(null);
       } finally {
         enqueueInFlight.current = false;
+        setWorkerStatus(null);
         setIsEnqueueing(false);
       }
     },
@@ -569,7 +621,7 @@ export function AvailabilityCrawlerDashboard() {
             type="button"
           >
             <Bot size={16} />
-            {isEnqueueing ? t("crawler.starting") : regionFilter === "all" ? t("crawler.runAll") : t("crawler.runScope", { scope: selectedRegionCopy.label })}
+            {isEnqueueing ? t("crawler.starting") : activeRun ? t("crawler.resumeRun") : regionFilter === "all" ? t("crawler.runAll") : t("crawler.runScope", { scope: selectedRegionCopy.label })}
           </button>
           <button
             className="ghost-button crawler-refresh-action"
@@ -596,6 +648,7 @@ export function AvailabilityCrawlerDashboard() {
                 <button
                   disabled={
                     activeRunHasOutOfRegionSources ||
+                    workerState === "running" ||
                     !canTriggerCrawlerRun({
                       activeRun,
                       isEnqueueing: isEnqueueing || isResetting,
@@ -657,6 +710,8 @@ export function AvailabilityCrawlerDashboard() {
           }
           summary={runItemSummary}
           snapshotSummary={snapshotSummary}
+          workerState={workerState}
+          resumable={Boolean(currentWorkerStatus?.resumable && canRunSelectedRegion)}
         />
       ) : null}
 
@@ -675,10 +730,11 @@ export function AvailabilityCrawlerDashboard() {
       <section className="kpi-strip crawler-kpi-strip">
         {overviewCards.map((card) => (
           <CrawlerMetric
-            helper={card.helper}
+            helper={card.id === "running" && hasActiveRun && workerState !== "running"
+              ? t("crawler.pendingTaskCounts", { claimed: runItemSummary.running, queued: runItemSummary.queued }) : card.helper}
             icon={overviewCardIcon(card.id)}
             key={card.id}
-            label={card.label}
+            label={card.id === "running" && hasActiveRun && workerState !== "running" ? t("crawler.pendingTasks") : card.label}
             tone={card.tone}
             value={card.value}
           />
@@ -705,7 +761,7 @@ export function AvailabilityCrawlerDashboard() {
               key={option.filter}
               active={runStateFilter === option.filter}
               count={runListCounts[option.filter]}
-              label={option.label}
+              label={option.filter === "active" && hasActiveRun && workerState !== "running" ? t("crawler.pendingTasks") : option.label}
               onClick={() => setRunStateFilter(option.filter)}
               state={option.filter}
             />
@@ -714,7 +770,7 @@ export function AvailabilityCrawlerDashboard() {
 
         <div className={`crawler-run-list-summary ${runStateFilter}`}>
           <div>
-            <h4>{runListView.title}</h4>
+            <h4>{runStateFilter === "active" && hasActiveRun && workerState !== "running" ? t("crawler.pendingTasks") : runListView.title}</h4>
             <p>
               {runListView.helper}
               {activeFilter !== "all" ? t("crawler.sourceTypeSuffix", { type: sourceFilterCopy.label }) : ""}
@@ -785,6 +841,7 @@ export function AvailabilityCrawlerDashboard() {
           runItemsBySourceId={runItemsBySourceId}
           groups={filteredBuildingGroups}
           showEmptySections={runStateFilter === "all" && filteredBuildingGroups.length > 0}
+          workerState={workerState}
         />
       </section>
     </div>
@@ -863,7 +920,9 @@ function CrawlerRunProgressCard({
   scopeLabel,
   scopeNotice,
   snapshotSummary,
-  summary
+  summary,
+  workerState,
+  resumable,
 }: {
   active: boolean;
   canReset: boolean;
@@ -874,9 +933,10 @@ function CrawlerRunProgressCard({
   scopeNotice: string | null;
   snapshotSummary: ReturnType<typeof summarizeCrawlerSnapshotQuality>;
   summary: ReturnType<typeof summarizeCrawlRunItems>;
+  workerState: CrawlerWorkerState;
+  resumable: boolean;
 }) {
   const { t } = useI18n();
-  const waitingForWorker = active && run.status === "queued" && summary.running === 0 && summary.processed === 0;
 
   return (
     <section className="analytics-card crawler-progress-card">
@@ -886,14 +946,13 @@ function CrawlerRunProgressCard({
           <h3>{t(active ? "crawler.scopeProgress" : "crawler.lastScopeRun", { scope: scopeLabel })}</h3>
           <div className="crawler-progress-message-row">
             <p>
-              {scopeNotice ??
-                (active
-                ? waitingForWorker
-                  ? t("crawler.waitingWorker")
-                  : t("crawler.workerProcessing")
+              {active
+                ? t(crawlerWorkerStatusMessage(workerState))
                 : snapshotSummary.partial + snapshotSummary.unverified > 0
                   ? t("crawler.endedReview")
-                  : t("crawler.endedSources", { count: summary.processed }))}
+                  : t("crawler.endedSources", { count: summary.processed })}
+              {resumable ? ` ${t("crawler.workerResumable")}` : ""}
+              {scopeNotice ? ` ${scopeNotice}` : ""}
             </p>
             {canReset ? (
               <button className="ghost-button compact-button crawler-inline-reset" disabled={isResetting} onClick={onReset} type="button">
@@ -917,12 +976,13 @@ function CrawlerRunProgressCard({
 
       <div className="crawler-run-status-grid">
         <CrawlerRunStatusMetric label={t("crawler.queued")} value={summary.queued} />
-        <CrawlerRunStatusMetric label={t("crawler.running")} value={summary.running} tone="brand" />
+        <CrawlerRunStatusMetric label={t(active && workerState !== "running" ? "crawler.claimedTasks" : "crawler.running")} value={summary.running} tone="brand" />
         <CrawlerRunStatusMetric label={t("crawler.parsedSources")} value={summary.succeeded} />
         <CrawlerRunStatusMetric label={t("crawler.noUnits")} value={summary.noUnits} />
         <CrawlerRunStatusMetric label={t("crawler.adapterNeeded")} value={summary.unsupported} />
         <CrawlerRunStatusMetric label={t("crawler.failed")} value={summary.failed} tone="danger" />
       </div>
+      <p className="table-subtext crawler-snapshot-summary">{t("crawler.runObservations", { count: summary.observationsCreated })}</p>
       <p className="table-subtext crawler-snapshot-summary" aria-label={t("crawler.snapshotQuality")}>
         {t("crawler.snapshotSummary", { complete: snapshotSummary.complete, empty: snapshotSummary.confirmedEmpty, partial: snapshotSummary.partial, unverified: snapshotSummary.unverified })}
       </p>
@@ -1059,9 +1119,9 @@ function CrawlerRunStatusMetric({
   );
 }
 
-function RunItemStatusPill({ status }: { status: string }) {
+function RunItemStatusPill({ status, workerState }: { status: string; workerState: CrawlerWorkerState }) {
   const { t } = useI18n();
-  if (status === "running") return <span className="status-pill pending">{t("crawler.running")}</span>;
+  if (status === "running") return <span className="status-pill pending">{t(workerState === "running" ? "crawler.running" : "crawler.claimedTasks")}</span>;
   if (status === "succeeded") return <span className="status-pill active">{t("crawler.parsed")}</span>;
   if (status === "no_units_found") return <span className="status-pill pending">{t("crawler.noUnits")}</span>;
   if (status === "failed") return <span className="status-pill suspended">{t("crawler.failed")}</span>;
@@ -1170,7 +1230,8 @@ function CrawlerSourceTable({
   isEnqueueing,
   onRunSource,
   runItemsBySourceId,
-  showEmptySections
+  showEmptySections,
+  workerState,
 }: {
   activeRun: AvailabilityCrawlRun | null;
   groups: CrawlerBuildingGroup[];
@@ -1178,6 +1239,7 @@ function CrawlerSourceTable({
   onRunSource: (source: AvailabilityCrawlerDashboardRow) => void;
   runItemsBySourceId: Map<string, AvailabilityCrawlRunItem>;
   showEmptySections: boolean;
+  workerState: CrawlerWorkerState;
 }) {
   const { t } = useI18n();
   const sections = groupCrawlerRunListSections(
@@ -1213,8 +1275,8 @@ function CrawlerSourceTable({
             <Fragment key={section.state}>
               <CrawlerSourceSectionHeader
                 count={section.rows.length}
-                helper={section.helper}
-                label={section.label}
+                helper={section.state === "active" && activeRun && workerState !== "running" ? t("crawler.pendingTaskGroup") : section.helper}
+                label={section.state === "active" && activeRun && workerState !== "running" ? t("crawler.pendingTasks") : section.label}
                 state={section.state}
               />
               {section.rows.length === 0 ? (
@@ -1231,6 +1293,7 @@ function CrawlerSourceTable({
                     isEnqueueing={isEnqueueing}
                     onRunSource={onRunSource}
                     runItem={runItem}
+                    workerState={workerState}
                   />
                 );
               })}
@@ -1292,13 +1355,15 @@ function CrawlerSourceTableRow({
   group,
   isEnqueueing,
   onRunSource,
-  runItem
+  runItem,
+  workerState,
 }: {
   activeRun: AvailabilityCrawlRun | null;
   group: CrawlerBuildingGroup;
   isEnqueueing: boolean;
   onRunSource: (source: AvailabilityCrawlerDashboardRow) => void;
   runItem: AvailabilityCrawlRunItem | null;
+  workerState: CrawlerWorkerState;
 }) {
   const { t, language } = useI18n();
   const row = group.primarySource;
@@ -1306,7 +1371,8 @@ function CrawlerSourceTableRow({
   const currentChanges = runItem ? runItem.changes_detected : row.change_count_7d;
   const statusTime = runItem ? runItem.finished_at ?? runItem.started_at : row.last_crawled_at;
   const diagnostic = runItem ? runItem.error : row.latest_error;
-  const statusNote = runItem ? runItemNote(runItem.status, t) : noteForSource(row, t);
+  const statusNote = runItem?.status === "running" && workerState !== "running" ? t("crawler.claimedTaskNote")
+    : runItem ? runItemNote(runItem.status, t) : noteForSource(row, t);
   const quality = describeCrawlerSnapshotQuality(runItem, t);
 
   return (
@@ -1335,7 +1401,7 @@ function CrawlerSourceTableRow({
         </p>
       </td>
       <td>
-        {runItem ? <RunItemStatusPill status={runItem.status} /> : <StatusPill row={row} />}
+        {runItem ? <RunItemStatusPill status={runItem.status} workerState={workerState} /> : <StatusPill row={row} />}
         {runItem?.status !== "running" && runItem?.status !== "queued" ? (
           <p className="table-subtext"><span className={`status-pill ${quality.tone}`} title={quality.note}>{quality.label}</span></p>
         ) : null}

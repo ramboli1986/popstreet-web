@@ -6,6 +6,7 @@ export type CrawlRunLike = {
 } | null;
 
 export type CrawlRunItemLike = {
+  observations_created?: number | null;
   started_at?: string | null;
   heartbeat_at?: string | null;
   lease_expires_at?: string | null;
@@ -127,10 +128,12 @@ export function summarizeCrawlRunItems(items: CrawlRunItemLike[]) {
     active: 0,
     processed: 0,
     progressPercentage: 0,
+    observationsCreated: 0,
   };
 
   for (const item of items) {
     const status = item.status ?? "queued";
+    summary.observationsCreated += Math.max(0, item.observations_created ?? 0);
     if (status === "queued") summary.queued += 1;
     else if (status === "running") summary.running += 1;
     else if (status === "succeeded") summary.succeeded += 1;

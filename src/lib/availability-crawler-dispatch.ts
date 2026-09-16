@@ -12,7 +12,13 @@ export type CrawlerDispatch = {
   execution_name: string | null;
 };
 
-export type CrawlerExecution = { operation: string | null; execution: string | null; terminal?: boolean };
+export type CrawlerExecution = {
+  operation: string | null;
+  execution: string | null;
+  terminal?: boolean;
+  state?: "running" | "failed" | "succeeded" | "unknown";
+  completedAt?: string | null;
+};
 
 export class CrawlerDispatchConflict extends Error {}
 export class CrawlerLaunchRejected extends Error {
